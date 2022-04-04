@@ -2,7 +2,7 @@ from numpy.distutils.core import setup, Extension
 import sys
 
 symph_ext = Extension(name = "symph",
-                      sources = ["FModules/symdynph_gq_new.f90", "FModules/symm_base.f90", 
+                      sources = ["FModules/symdynph_gq_new.f90", "FModules/symm_base.f90",
                                  "FModules/sgam_ph.f90", "FModules/invmat.f90", "FModules/set_asr.f90",
                                  "FModules/error_handler.f90", "FModules/io_global.f90",
                                  "FModules/flush_unit.f90", "FModules/symvector.f90",
@@ -13,7 +13,7 @@ symph_ext = Extension(name = "symph",
                                  "FModules/star_q.f90", "FModules/eqvect.f90",
                                  "FModules/symm_matrix.f90", "FModules/from_matdyn.f90",
                                  "FModules/interp.f90", "FModules/q_gen.f90", "FModules/smallgq.f90",
-                                 "FModules/symmetry_high_rank.f90", 
+                                 "FModules/symmetry_high_rank.f90",
                                  "FModules/unwrap_tensors.f90",
                                  "FModules/get_latvec.f90",
                                  "FModules/contract_two_phonon_propagator.f90",
@@ -45,6 +45,15 @@ thirdorder_ext = Extension(name = "thirdorder",
                       extra_f90_compile_args = ["-cpp"]
                       )
 
+cond_ext = Extension(name = "thermal_conductivity",
+                      sources = ["FModules/get_scattering_q_grid.f90",
+                                 "FModules/third_order_cond.f90",
+                                 "FModules/get_lf.f90"],
+                      libraries= ["lapack", "blas"],
+                      extra_f90_compile_args = ["-cpp", "-fcheck=all", "-fopenmp", "-lgomp"],
+                      extra_link_args = ["-fopenmp"]
+                      )
+
 
 
 # The C module extension actually depeds on the python version
@@ -52,7 +61,7 @@ WRAPPER = "CModules/wrapper3.c"
 if sys.version_info[0] < 3:
     print("Running python2, changing the C wrapper")
     WRAPPER = "CModules/wrapper.c"
-    
+
 cc_modules_ext = Extension(name = "cc_linalg",
                       sources = ["CModules/LinAlg.c", WRAPPER]
                       )
@@ -72,7 +81,7 @@ setup( name = "CellConstructor",
        license = "MIT",
        include_package_data = True,
        scripts = ["scripts/symmetrize_dynmat.py", "scripts/cellconstructor_test.py", "scripts/view_scf_atoms.py"],
-       ext_modules = [symph_ext, cc_modules_ext, thirdorder_ext, secondorder_ext]
+       ext_modules = [symph_ext, cc_modules_ext, thirdorder_ext, secondorder_ext, cond_ext]
        )
 
 def readme():
