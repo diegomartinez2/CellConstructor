@@ -3,3 +3,5 @@ numpy
 scipy
 ase==3.16.0
 spglib
+phono3py==2.1.0
+phonopy==2.13.1

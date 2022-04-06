@@ -15,7 +15,7 @@ module third_order_cond
         REAL(DP), parameter :: tpi=3.14159265358979323846_DP*2.0_DP
         REAL(DP) :: arg
         COMPLEX(DP) :: phase
-        INTEGER :: i_block, a,b,c
+        INTEGER :: i_block, !a,b,c
     !
         fc_interp = (0._dp, 0._dp)
     !
@@ -32,7 +32,7 @@ module third_order_cond
 !            ENDDO
 !            ENDDO
              fc_interp = fc_interp + phase*fc(i_block,:,:,:)
-      ! 
+      !
         END DO
 
     end subroutine interpol_v2
@@ -40,55 +40,55 @@ module third_order_cond
     subroutine compute_diag_dynamic_bubble_single(energies,sigma,T,freq,is_gamma,D3,ne,n_mod, gaussian, bubble)
         implicit none
         INTEGER, PARAMETER :: DP = selected_real_kind(14,200)
-    
+
         complex(kind=DP), dimension(ne, n_mod),intent(OUT) :: bubble
-    
-        real(kind=DP), intent(IN) :: energies(ne)    
+
+        real(kind=DP), intent(IN) :: energies(ne)
         real(kind=DP), intent(IN) :: sigma(n_mod)
         real(kind=DP), intent(IN) :: T
         real(kind=DP), intent(IN) :: freq(n_mod,3)
         logical      , intent(IN) :: is_gamma(3), gaussian
         complex(kind=DP), dimension(n_mod,n_mod,n_mod), intent(IN) :: D3
         integer, intent(IN) :: n_mod, ne
-    
+
         real(kind=DP)    :: q2(n_mod,3),q3(n_mod,3)
-        complex(kind=DP) :: Lambda_23(ne)   
+        complex(kind=DP) :: Lambda_23(ne)
         integer :: i, rho2, rho3, nu,mu
         logical, parameter :: static_limit = .false.
-    
+
         q2(:,1)=freq(:,2)
-        q3(:,1)=freq(:,3) 
- 
+        q3(:,1)=freq(:,3)
+
         q2(:,2)=0.0_dp
         q3(:,2)=0.0_dp
         do i = 1, n_mod
             if (.not. is_gamma(2) .or. i > 3) q2(i,2)=1.0_dp/freq(i,2)
             if (.not. is_gamma(3) .or. i > 3) q3(i,2)=1.0_dp/freq(i,3)
-        end do    
+        end do
 
         call bose_freq(T, n_mod, freq(:,2), q2(:,3))
-        call bose_freq(T, n_mod, freq(:,3), q3(:,3))        
+        call bose_freq(T, n_mod, freq(:,3), q3(:,3))
 
-    
+
         bubble=(0.0_dp,0.0_dp)
-    
+
         DO rho3=1,n_mod
         DO rho2=1,n_mod
             !
-            ! call Lambda_dynamic_single(ne,n_mod,energies,sigma,T,static_limit,q2(rho2,:),q3(rho3,:),Lambda_23)           
+            ! call Lambda_dynamic_single(ne,n_mod,energies,sigma,T,static_limit,q2(rho2,:),q3(rho3,:),Lambda_23)
             !
             DO mu = 1,n_mod
                    !
-                   call Lambda_dynamic_single(ne,energies,sigma(mu),T,static_limit,q2(rho2,:),q3(rho3,:), gaussian, Lambda_23)           
+                   call Lambda_dynamic_single(ne,energies,sigma(mu),T,static_limit,q2(rho2,:),q3(rho3,:), gaussian, Lambda_23)
                    !
-                   ! 
-                   bubble(:,mu) = bubble(:,mu) +  & 
+                   !
+                   bubble(:,mu) = bubble(:,mu) +  &
                                      CONJG(D3(mu,rho2,rho3))*Lambda_23*D3(mu,rho2,rho3)
                    !
-            END DO            
+            END DO
             !
         END DO
-        END DO    
+        END DO
     !
     end subroutine compute_diag_dynamic_bubble_single
 
@@ -96,51 +96,51 @@ module third_order_cond
 
         implicit none
         INTEGER, PARAMETER :: DP = selected_real_kind(14,200)
-    
+
         complex(kind=DP), dimension(n_mod),intent(OUT)     :: selfnrg
-    
+
         real(kind=DP), intent(IN) :: sigma(n_mod)
         real(kind=DP), intent(IN) :: T
         real(kind=DP), intent(IN) :: freq(n_mod,3)
         logical      , intent(IN) :: is_gamma(3), gaussian
         complex(kind=DP), dimension(n_mod,n_mod,n_mod), intent(IN) :: D3
         integer, intent(IN) :: n_mod
-    
+
         real(kind=DP)    :: q2(n_mod,3),q3(n_mod,3)
         complex(kind=DP) :: Lambda_23_freq
         integer :: i, rho2, rho3, nu,mu
-    
+
         q2(:,1)=freq(:,2)
-        q3(:,1)=freq(:,3) 
- 
+        q3(:,1)=freq(:,3)
+
         q2(:,2)=0.0_dp
         q3(:,2)=0.0_dp
         do i = 1, n_mod
             if (.not. is_gamma(2) .or. i > 3) q2(i,2)=1.0_dp/freq(i,2)
             if (.not. is_gamma(3) .or. i > 3) q3(i,2)=1.0_dp/freq(i,3)
-        end do    
+        end do
 
         call bose_freq(T, n_mod, freq(:,2), q2(:,3))
-        call bose_freq(T, n_mod, freq(:,3), q3(:,3))        
+        call bose_freq(T, n_mod, freq(:,3), q3(:,3))
 
-    
+
         selfnrg=(0.0_dp,0.0_dp)
-    
+
         DO mu = 1,n_mod
         DO rho3=1,n_mod
         DO rho2=1,n_mod
             !if(abs(freq(mu, 1)**2 - (q2(rho2,1) + q3(rho3,1)**2)) < (3.0_DP*sigma(mu))**2 .or. &
             !        abs(freq(mu, 1)**2 - (q2(rho2,1) - q3(rho3,1)**2)) < (3.0_DP*sigma(mu))**2) then
-            
-            call Lambda_dynamic_value_single(n_mod,freq(mu,1),sigma(mu),T,q2(rho2,:),q3(rho3,:), gaussian, Lambda_23_freq) 
+
+            call Lambda_dynamic_value_single(n_mod,freq(mu,1),sigma(mu),T,q2(rho2,:),q3(rho3,:), gaussian, Lambda_23_freq)
             !
-            
+
             selfnrg(mu)  = selfnrg(mu) + CONJG(D3(mu,rho2,rho3))*Lambda_23_freq*D3(mu,rho2,rho3)
             !
             !endif
         END DO
         END DO
-        END DO    
+        END DO
     !
     end subroutine compute_perturb_selfnrg_single
 
@@ -150,7 +150,7 @@ module third_order_cond
         real(kind=dp),parameter      :: pi = 3.141592653589793_dp
     !
         real(kind=dp), intent(in)    :: ener(ne)
-        real(kind=dp), intent(in)    :: sigma(3*nat)    
+        real(kind=dp), intent(in)    :: sigma(3*nat)
         integer, intent(in)          :: ne,nat
         real(kind=dp), intent(in)    :: d2_freq(3*nat)
         complex(kind=dp), intent(in) :: selfnrg(ne,3*nat)
@@ -167,8 +167,8 @@ module third_order_cond
             DO ie = 1, ne
 
                 a = ener(ie)**2-sigma(mu)**2-d2_freq(mu)**2-DBLE(selfnrg(ie,mu))
-                b = 2*sigma(mu)*ener(ie)-DIMAG(selfnrg(ie,mu))          
-          
+                b = 2*sigma(mu)*ener(ie)-DIMAG(selfnrg(ie,mu))
+
                 num   = ener(ie)*b
                 denom = (a**2+b**2)*pi
           !
@@ -185,23 +185,23 @@ module third_order_cond
     subroutine Lambda_dynamic_single(ne,energies,sigma,T,static_limit,w_q2,w_q3,gaussian,Lambda_out)
         implicit none
         INTEGER, PARAMETER :: DP = selected_real_kind(14,200)
-        complex(kind=DP), intent(out) :: Lambda_out(ne)    
+        complex(kind=DP), intent(out) :: Lambda_out(ne)
         integer, intent(in)       :: ne
         logical, intent(in)       :: static_limit, gaussian
-        real(kind=DP), intent(in) :: energies(ne), sigma    
+        real(kind=DP), intent(in) :: energies(ne), sigma
         real(kind=DP), intent(in) :: T,w_q2(3),w_q3(3)
         real(kind=DP) :: w2,w3,n2,n3,w2m1,w3m1
         real(kind=DP) :: bose_P, bose_M, omega_P, omega_P2 ,&
                      omega_M,omega_M2, re_p, im_p
         complex(kind=DP) :: reg, ctm_P, ctm_M, ctm(ne)
         integer       :: ie
-            !  
+            !
         w2=w_q2(1)
-        w3=w_q3(1)            
+        w3=w_q3(1)
         w2m1=w_q2(2)
         w3m1=w_q3(2)
         n2=w_q2(3)
-        n3=w_q3(3)            
+        n3=w_q3(3)
             !
         bose_P    = 1 + n2 + n3
         omega_P   = w3+w2
@@ -257,8 +257,8 @@ module third_order_cond
                         ctm_P = bose_P *omega_P/(omega_P2-reg)
                         ctm_M = bose_M *omega_M/(omega_M2-reg)
                         ctm(ie) = ctm_P - ctm_M
-                END DO      
-            ENDIF        
+                END DO
+            ENDIF
         END IF
             !
         lambda_out=-ctm * w2m1*w3m1/4.0_dp
@@ -268,23 +268,23 @@ module third_order_cond
     subroutine Lambda_dynamic_value_single(n_mod,value,sigma,T,w_q2,w_q3,gaussian,Lambda_out)
         implicit none
         INTEGER, PARAMETER :: DP = selected_real_kind(14,200)
-        complex(kind=DP), intent(out) :: Lambda_out 
+        complex(kind=DP), intent(out) :: Lambda_out
         integer, intent(in)       :: n_mod
         logical, intent(in)       :: gaussian
-        real(kind=DP), intent(in) :: sigma, value    
+        real(kind=DP), intent(in) :: sigma, value
         real(kind=DP), intent(in) :: T,w_q2(3),w_q3(3)
         real(kind=DP) :: w2,w3,n2,n3,w2m1,w3m1
         real(kind=DP) :: bose_P, bose_M, omega_P, omega_P2 ,&
                      omega_M,omega_M2, re_p, im_p
         complex(kind=DP) :: reg, ctm_P, ctm_M, ctm
         integer       :: ie, isigma,mu
-            !  
+            !
         w2=w_q2(1)
-        w3=w_q3(1)            
+        w3=w_q3(1)
         w2m1=w_q2(2)
         w3m1=w_q3(2)
         n2=w_q2(3)
-        n3=w_q3(3)            
+        n3=w_q3(3)
             !
         bose_P    = 1 + n2 + n3
         omega_P   = w3+w2
@@ -355,7 +355,7 @@ module third_order_cond
     !
         REAL(DP),INTENT(in) :: freq,T
     !
-        REAL(DP), parameter :: K_BOLTZMANN_RY= 1.3806504E-23_DP /(4.35974394E-18_DP/2) !K_BOLTZMANN_SI / (HARTREE_SI/2)    
+        REAL(DP), parameter :: K_BOLTZMANN_RY= 1.3806504E-23_DP /(4.35974394E-18_DP/2) !K_BOLTZMANN_SI / (HARTREE_SI/2)
         REAL(DP) :: Tm1
     !
         Tm1 = 1/(T*K_BOLTZMANN_RY)
@@ -383,12 +383,12 @@ module third_order_cond
     FUNCTION gaussian_function(x,sigma)
         IMPLICIT NONE
         INTEGER, PARAMETER :: DP = selected_real_kind(14,200)
-        REAL(DP), parameter :: PI = 3.141592653589793115997963468544185161590576171875_DP 
+        REAL(DP), parameter :: PI = 3.141592653589793115997963468544185161590576171875_DP
     !
         REAL(DP) :: gaussian_function
         REAL(DP), intent(in) :: x, sigma
 
-        gaussian_function = exp(-0.5_DP*x**2/sigma**2)/sqrt(2.0_DP*sigma**2/PI) 
+        gaussian_function = exp(-0.5_DP*x**2/sigma**2)/sqrt(2.0_DP*sigma**2/PI)
 
     END FUNCTION
 

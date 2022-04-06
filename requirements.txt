@@ -3,3 +3,5 @@ numpy
 scipy
 ase
 spglib
+phonopy
+phono3py
