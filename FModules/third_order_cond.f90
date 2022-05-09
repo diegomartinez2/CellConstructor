@@ -15,7 +15,7 @@ module third_order_cond
         REAL(DP), parameter :: tpi=3.14159265358979323846_DP*2.0_DP
         REAL(DP) :: arg
         COMPLEX(DP) :: phase
-        INTEGER :: i_block, !a,b,c
+        INTEGER :: i_block, a,b,c
     !
         fc_interp = (0._dp, 0._dp)
     !
