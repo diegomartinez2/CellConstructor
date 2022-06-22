@@ -439,11 +439,12 @@ Error, to compute the volume the structure must have a unit cell initialized:
         atoms = ase.io.read(filename)
 
         # Now obtain all the information
-        self.unit_cell = atoms.get_cell()
-        self.has_unit_cell = True
-        self.atoms = atoms.get_chemical_symbols()
-        self.N_atoms = len(self.atoms)
-        self.coords = atoms.positions.copy()
+        # self.unit_cell = atoms.get_cell()
+        # self.has_unit_cell = True
+        # self.atoms = atoms.get_chemical_symbols()
+        # self.N_atoms = len(self.atoms)
+        # self.coords = atoms.positions.copy()
+        self.generate_from_ase_atoms(atoms)
 
 
     def set_unit_cell(self, filename, delete_copies = False, rescale_coords = False):
@@ -542,7 +543,7 @@ Error, to compute the volume the structure must have a unit cell initialized:
 
         This method applies a strain tensor to the structure.
         Note, it will not affect the current structure,
-        but it returns a new strained structure. 
+        but it returns a new strained structure.
 
         Note: in the voigt representation, the off-diagonal terms of the strain tensor are intended as the sum
         of the two symmetric components of the tensor.

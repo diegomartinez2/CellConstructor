@@ -95,6 +95,23 @@ class Tensor2(GenericTensor):
                 The dynamical matrix from which you want to setup the tensor
         """
 
+        # Check if the supercell is correct
+        ERR = """
+Error, the supercell of the phonon object is {}.
+       it must match with the supercell defined for the Tensor2: {}
+""".format(phonons.GetSupercell(), self.supercell_size)
+        #print(ERR)
+
+        assert np.all([self.supercell_size[i] == phonons.GetSupercell()[i] for i in range(3)]), ERR
+
+        # Check that no 1 atom with 1 q point
+        if np.prod(phonons.GetSupercell()) == 1 and phonons.structure.N_atoms == 1:
+            ERR = """
+Error, cannot initialize a tensor from a structure with 1 atom with only Gamma 
+       check if you imported the dynamical matrix with the correct nqirr.
+
+"""
+            raise ValueError(ERR)
         current_dyn = phonons.Copy()
 
         # Check if the dynamical matrix has the effective charges
@@ -327,7 +344,7 @@ class Tensor2(GenericTensor):
         self.n_R = Settings.broadcast(self.n_R)       
         
         
-    def Center(self, nneigh=None, Far=1,tol=1.0e-5):
+    def Center(self, nneigh=None, Far=2,tol=1.0e-5):
         """
         CENTERING 
         =========
@@ -370,6 +387,10 @@ class Tensor2(GenericTensor):
                     In the centering, supercell equivalent atoms are considered within 
                     -Far,+Far multiples of the super-lattice vectors
         """    
+        # Check if the phonons is initialized TODO
+        #if np.max(np.abs(self.x_r_vector2)) == 0:
+        #    raise ValueError("Error, Tensor object not initialized!")
+
         if Settings.am_i_the_master():
             
             
@@ -705,7 +726,7 @@ class Tensor2(GenericTensor):
                                         for r_block  in range(self.n_R):
                                             f.write("{:>6d} {:>6d} {:>6d} {:16.8e}\n".format(self.x_r_vector2[0, r_block],self.x_r_vector2[1, r_block],self.x_r_vector2[2, r_block], self.tensor[r_block, 3*nat1 + alpha, 3*nat2 + beta]))
                                             
-    def Interpolate(self, q2, asr = False, verbose = False, asr_range = None, q_direct = None):
+    def Interpolate(self, q2, asr = False, verbose = False, asr_range = None, q_direct = None, lo_to_splitting = True):
         """
         Perform the Fourier interpolation to obtain the force constant matrix at a given q
         This subroutine automatically performs the ASR
@@ -728,6 +749,9 @@ class Tensor2(GenericTensor):
                 to pick the direction of the nonanalitical correction to apply.
                 If it is not initialized, a random versor will be chosen.
                 If it is the 0 vector, the nonanalitic correction at gamma will be avoided.
+            lo_to_splitting : bool
+                If True and the point is gamma, add the nonanalytic correction in a direction
+                given by q_direct
 
         Results
         -------
@@ -757,7 +781,7 @@ class Tensor2(GenericTensor):
             # Check if the vector is gamma
             if np.max(np.abs(q2)) < 1e-12:
                 q_vect = np.zeros(3, dtype = np.double)
-                compute_nonanal = True
+                compute_nonanal = lo_to_splitting
                 if q_direct is not None:
                     # the - to take into account the difference between QE convension and our
                     if np.linalg.norm(q_direct) < 1e-8:
@@ -945,7 +969,7 @@ class Tensor2(GenericTensor):
 
     #     return new_tensor
 
-    def GeneratePhonons(self, supercell, asr = False):
+    def GeneratePhonons(self, supercell, asr = False, lo_to_splitting = False):
         """
         GENERATE PHONONS
         ================
@@ -967,6 +991,10 @@ class Tensor2(GenericTensor):
             - asr : bool
                 If true, the ASR is imposed during the interpolation.
                 This is the best way to correct the modes even close to gamma
+            - lo_to_splitting : bool
+                If true, the phonons at gamma will have the LO-TO splitting
+                from a random direction.
+                Note, this will break symmetrization.
         
         Results
         -------
@@ -986,7 +1014,12 @@ class Tensor2(GenericTensor):
 
         # Interpolate over the q points
         for i, q_vector in enumerate(q_vectors):
-            dynq = self.Interpolate(-q_vector, asr = asr)
+            q_direction = None
+            if lo_to_splitting:
+                q_direction = np.random.normal(size = 3) 
+                q_direction /= np.linalg.norm(q_direction)
+
+            dynq = self.Interpolate(-q_vector, asr = asr, q_direct= q_direction, lo_to_splitting=lo_to_splitting)
             dynmat.dynmats.append(dynq)
 
         # Adjust the q star according to symmetries
@@ -1407,7 +1440,7 @@ class Tensor3():
                                             f.write("{:>6d} {:>6d} {:>6d} {:>6d} {:>6d} {:>6d} {:16.8e}\n".format(self.x_r_vector2[0, r_block],self.x_r_vector2[1, r_block],self.x_r_vector2[2, r_block],self.x_r_vector3[0, r_block],self.x_r_vector3[1, r_block],self.x_r_vector3[2, r_block], self.tensor[r_block, 3*nat1 + alpha, 3*nat2 + beta, 3*nat3 + gamma]))
                                             
 
-    def Center(self, nneigh=None, Far=1,tol=1.0e-5):
+    def Center(self, nneigh=None, Far=2,tol=1.0e-5):
         """
         CENTERING 
         =========
@@ -2960,7 +2993,7 @@ class Tensor3():
 
 
 # Plot the phonons in the given k-path
-def get_phonons_in_qpath(dynamical_matrix, q_path):
+def get_phonons_in_qpath(dynamical_matrix, q_path, center_args = {}):
     """
     GET PHONONS IN K-PATH
     =====================
@@ -2973,6 +3006,9 @@ def get_phonons_in_qpath(dynamical_matrix, q_path):
             The dynamical matrix (with effective charges)
         q_path : list of ndarray(size of 3)
             List of q points in 2pi/A units.
+        center_args : dict
+            Dictionary of parameters to be passed to the Center function of
+            Tensor2
     
     Results
     -------
@@ -3018,7 +3054,7 @@ def get_phonons_in_qpath(dynamical_matrix, q_path):
                  dynamical_matrix.GetSupercell())
 
     t2.SetupFromPhonons(dynamical_matrix)
-    t2.Center(Far = 4)
+    t2.Center(**center_args)
     t2.Apply_ASR()
 
     n_k, _ = q_path.shape

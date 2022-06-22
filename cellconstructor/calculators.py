@@ -1,3 +1,4 @@
+from ast import Delete
 import cellconstructor as CC
 import cellconstructor.Structure
 import cellconstructor.Methods
@@ -12,9 +13,12 @@ import cellconstructor.Settings as Settings
 import cellconstructor.Units
 import copy
 
+import scipy, scipy.optimize
+
 import numpy as np
 import copy
 import sys, os
+
 
 
 
@@ -147,6 +151,10 @@ class Espresso(FileIOCalculator):
                 Dictionary of the file names of the pseudopotentials
             masses : dict
                 Dictionary of the masses (in UMA) of the specified atomic species
+            kpts : list
+                A list of the k points grid to sample the space.
+                If the calculation is given at gamma, use the gamma string.
+                Note gamma is incompatible with a koffset
         """
         FileIOCalculator.__init__(self)
 
@@ -211,18 +219,34 @@ class Espresso(FileIOCalculator):
 
         print("TOTAL INPUT:")
         print(total_input)
-
         scf_text += """
 ATOMIC_SPECIES
 """
         for atm in typs:
             scf_text += "{}  {}   {}\n".format(atm, self.masses[atm], self.pseudopotentials[atm])
         
-        scf_text += """
+        if isinstance(self.kpts, str):
+            if self.kpts.lower() == 'gamma':
+                scf_text += '''
+K_POINTS gamma
+'''
+            else:
+                raise ValueError('Error, kpts msut be either list or gamma, {} not recognized'.format(self.kpts))
+        elif len(np.shape(self.kpts)) == 2:
+            nkpts, _ = np.shape(self.kpts)
+            scf_text += '''
+K_POINTS crystal
+{}
+'''.format(nkpts)
+            for i in range(nkpts):
+                scf_text += '{:.16f} {:.16f} {:.16f} 1\n'.format(*list(self.kpts[i, :]))
+        elif len(self.kpts) == 3:
+            scf_text += """
 K_POINTS automatic
 {} {} {} {} {} {}
 """.format(self.kpts[0], self.kpts[1], self.kpts[2],
-            self.koffset[0], self.koffset[1], self.koffset[2])
+           self.koffset[0], self.koffset[1], self.koffset[2])
+            
         
         scf_text += structure.save_scf(None, get_text = True)
 
@@ -362,6 +386,117 @@ K_POINTS automatic
         else:
             self.results = None
             
+
+        
+
+# Here the methods to minimize the structure with a standard calculator
+class Relax:
+    def __init__(self, structure, calculator, method = "BFGS", verbose = True, store_trajectory = True):
+        """
+        Class that perform the structure relaxation.
+
+        Parameters
+        ----------
+            structure : CC.Structure.Structure()
+                The atomic structure
+            calculator : CC.calculators.Calculator()
+                The CellConstructor (or ASE) calculator.
+            method : string
+                The algorithm for the minimization. Default BFGS
+            verbose : bool
+                If true, prints the current total energy and forces
+            store_trajector : bool
+                If true, the trajectory of the minimization is saved in self.trajectory
+        """
+        self.structure = structure
+        self.calculator = calculator
+        self.method = method
+        self.verbose = verbose
+        self.store_trajectory = store_trajectory
+
+        self.trajectory = []
+
+        # Usefull variables to track the energy and add a callback
+        self.last_eval = None
+        self.last_energy = None
+        self.last_force = None
+        self.iterations = 1
+
+        
+    def static_relax(self, **kwargs):
+        """
+        RELAX THE STRUCTURE
+        -------------------
+
+        Relax the structure keeping fixed the lattice parameters using a BFGS algorithm.
+
+        Parameters
+        ----------
+            **kwargs : 
+                Any optional arguments of scipy.optimize.minimize to control
+                the minimization.
+
+        Results
+        -------
+            optimized_structure : CC.Structure.Structure()
+                The structure after the optimization
+        """
+
+        if "method" in kwargs:
+            self.method = kwargs["method"]
+
+
+        # Parse the function to match the scipy minimizer
+        self.last_eval = np.zeros(self.structure.coords.ravel().shape, dtype = np.double)
+        self.last_energy = 0
+        self.last_force = np.zeros_like(self.last_eval)
+
+        def func(x):
+            if np.linalg.norm(x - self.last_eval) < 1e-16:
+                return self.last_energy, self.last_force
+
+            struct = self.structure.copy()
+            struct.coords[:,:] = x.reshape(struct.coords.shape)
+
+            energy, forces = get_energy_forces(self.calculator, struct)
+
+            self.last_eval[:] = x.copy()
+            self.last_energy = energy
+            self.last_force[:] = -forces.ravel().copy()
+
+            return energy, -forces.ravel()
+
+        def callback(xk):
+            
+            if self.verbose:
+                energy, force = func(xk)
+                print("{:5d}) {:16.8f} eV   {:16.8f} eV/A".format(self.iterations, energy, np.linalg.norm(force)))
+                self.iterations += 1
+            
+            if self.store_trajectory:
+                struc = self.structure.copy()
+                struc.coords[:,:] = xk.reshape(struc.coords.shape)
+                self.trajectory.append(struc)
+
+        if self.verbose:
+            print("STATIC STRUCTURE RELAX")
+            print()
+            print("{:5s}  {:16s}      {:16s}     ".format("ITERS", "ENERGY", "FORCE GRAD"))
+            print("--------------------------------------------------")
+
+        
+        res = scipy.optimize.minimize(func, self.structure.coords.ravel(), method = self.method, jac = True, callback = callback, **kwargs)
+
+        if self.verbose:
+            print()
+
+        final_struct = self.structure.copy()
+        final_struct.coords[:,:] = res.x.reshape(final_struct.coords.shape)
+        self.structure = final_struct
+
+        return final_struct
+
+
 
         
 

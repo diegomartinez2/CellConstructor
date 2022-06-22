@@ -17,6 +17,7 @@ import scipy, scipy.optimize
 import itertools
 import cellconstructor.Structure as Structure
 import cellconstructor.symmetries as symmetries
+import cellconstructor.ForceTensor as ForceTensor
 import cellconstructor.Methods as Methods
 from cellconstructor.Units import *
 
@@ -1242,7 +1243,7 @@ class Phonons:
             
     def save_phononpy(self, *args, **kwargs):
         "Mapping to save_phonopy"
-        warnings.warn("Deprecated, use save_phonopy instead.")
+        warnings.warn("[DEPRECATION WARNING] save_phononpy is deprecated: use save_phonopy instead.")
         self.save_phonopy(*args, **kwargs)
 
     def save_phonopy(self, path = ".", supercell_size = None):
@@ -2083,7 +2084,7 @@ class Phonons:
                 Free energy (in Ry) at the given temperature.
         """
         
-        K_to_Ry=6.336857346553283e-06
+        K_to_Ry=K_B / RY_TO_EV#6.336857346553283e-06
 
         if w_pols is None:
             w, pols = self.DiagonalizeSupercell()
@@ -2118,7 +2119,7 @@ class Phonons:
                 
         return free_energy
 
-    def get_harmonic_entropy(self, T, w_pols = None, small_w_freq = __EPSILON_W__):
+    def get_harmonic_entropy(self, T, w_pols = None, small_w_freq = __EPSILON_W__, allow_imaginary_freq = False):
         """
         Get the harmonic entropy.
 
@@ -2132,6 +2133,8 @@ class Phonons:
                 This way the diagonalization is performed only once if computed in a cycle.
             small_w_freq : float
                 If provided, all the frequencies below this value are neglected
+            allow_imaginary_freq : bool
+                If true, imaginary frequencies are ignored.
 
         Results
         -------
@@ -2148,11 +2151,14 @@ class Phonons:
         tmask = Methods.get_translations(pols, self.structure.generate_supercell(self.GetSupercell()).get_masses_array())
 
         # Exclude also other w = 0 modes (good for rotations)
-        locked_original = np.abs(w) < __EPSILON__
+        locked_original = np.abs(w) < __EPSILON_W__
         if np.sum(locked_original.astype(int)) > np.sum(tmask.astype(int)):
             tmask = locked_original
 
         w = w[ ~tmask ]
+
+        if allow_imaginary_freq:
+            w = w[w > 0]
 
         # Check the presence of imaginary frequencie
         if not np.all( w>0):
@@ -2160,14 +2166,83 @@ class Phonons:
 
         beta = RY_TO_KELVIN / T  
         Kb_ry = K_B / RY_TO_EV
-        
+
+
         # Compute the entropy for each mode
-        av_energy = Kb_ry * beta * w / (2 * np.tanh(beta * w / 2))
-        entropy = av_energy - Kb_ry * np.log(2*np.sinh(beta * w / 2))
+        exp_factor = np.exp(-beta * w)
+        entropy = -Kb_ry * np.log(1 - exp_factor) + Kb_ry* beta*w * (exp_factor / (1 - exp_factor))
+        #av_energy = Kb_ry * beta * w / (2 * np.tanh(beta * w / 2))
+        #entropy = av_energy - Kb_ry * np.log(2*np.sinh(beta * w / 2))
+
 
         return np.sum(entropy)
 
-        
+    def get_harmonic_heat_capacity(self, T, w_pols = None, small_w_freq = __EPSILON_W__, allow_imaginary_freq = False):
+        r"""
+        HEAT CAPACITY
+        =============
+
+        Compute the (quantum) harmonic heat capacity by deriving the entropy with respect to temperature
+
+
+        .. math::
+
+            C_v = \sum_\mu k_b \beta^2\omega_\mu^2 \frac{e^{\beta\omega_\mu}}{(e^{\beta\omega_\mu} - 1)^2}
+
+        Parameters
+        ----------
+            T : float
+                Temperature in K
+            w_pols : (ndarray, ndarray)
+                Frequencies and polarization vectors of the diagonalized dynamical matrix.
+                Obtained from self.DiagonalizeSupercell
+                This way the diagonalization is performed only once if computed in a cycle.
+            small_w_freq : float
+                If provided, all the frequencies below this value are neglected
+            allow_imaginary_freq : bool
+                If true, imaginary frequencies are ignored.
+
+        Results
+        -------
+            heat_capacity : float
+                The heat_capacity in Ry / K for the whole supercell structure
+        """
+
+        if T < __EPSILON__:
+            return 0
+            
+
+        if w_pols is None:
+            w, pols = self.DiagonalizeSupercell()
+        else:
+            w, pols = w_pols
+
+        # Remove translations
+        tmask = Methods.get_translations(pols, self.structure.generate_supercell(self.GetSupercell()).get_masses_array())
+
+        # Exclude also other w = 0 modes (good for rotations)
+        locked_original = np.abs(w) < __EPSILON_W__
+        if np.sum(locked_original.astype(int)) > np.sum(tmask.astype(int)):
+            tmask = locked_original
+
+        w = w[ ~tmask ]
+
+        if allow_imaginary_freq:
+            w = w[w > 0]
+
+        # Check the presence of imaginary frequencie
+        if not np.all( w>0):
+            raise ValueError("Error, the entropy is not defined when the dynamical matrix has imaginary frequencies!")
+
+        beta = RY_TO_KELVIN / T  
+        Kb_ry = K_B / RY_TO_EV
+
+        # Compute the specific heat for each mode
+        exp_factor2 = np.exp(beta * w)
+        cv = Kb_ry * (beta*w)**2 * exp_factor2 / (exp_factor2 - 1)**2
+
+        # Sum the result in the full supercell
+        return np.sum(cv)
 
         
     def get_phonon_dos(self, w_array, smearing, exclude_acoustic = True, use_cm = False, w_pols = None):
@@ -2711,6 +2786,37 @@ class Phonons:
                 The supercell in each direction.
         """
         return symmetries.GetSupercellFromQlist(self.q_tot, self.structure.unit_cell)
+
+    def InterpolateMesh(self, mesh_dim, lo_to_splitting = False):
+        """
+        INTERPOLATE THE DYNAMICAL MATRIX IN A FINER Q MESH
+        ==================================================
+
+        This method employs the Tensor2 interpolateion functions 
+        from the ForceTensor module to perform the interpolation.
+
+        Parameters
+        ----------
+            mesh_dim : list of int
+                The dimension of the q-mesh on which perform the interpolation.
+
+        Results
+        -------
+            new_dyn : Phonons.Phonons()
+                A new dynamical matrix defined on the desidered mesh.
+        """
+
+        # Setup the force constant tensor
+        current_mesh = self.GetSupercell()
+        t2 = ForceTensor.Tensor2(self.structure, self.structure.generate_supercell(current_mesh), current_mesh)
+        t2.SetupFromPhonons(self)
+
+        out_dyn = t2.GeneratePhonons(mesh_dim, lo_to_splitting=lo_to_splitting)
+        return out_dyn
+
+
+
+
     
     def Interpolate(self, coarse_grid, fine_grid, support_dyn_coarse = None, 
                     support_dyn_fine = None, symmetrize = False):
@@ -2727,6 +2833,8 @@ class Phonons:
         If you want to account for effective charges you should use the ForceTensor.Tensor2 class
         to interpolate.
 
+        NOTE: This is going to be replaced with the InterpolateMesh function, 
+              accounting properly for effective charges
         
         Parameters
         ----------
@@ -3325,7 +3433,7 @@ WARNING: Effective charges are not accounted by this method
         if apply_sum_rule:
             self.ApplySumRule()
 
-    def DiagonalizeSupercell(self, verbose = False):
+    def DiagonalizeSupercell(self, verbose = False, lo_to_split = None):
         r"""
         DYAGONALIZE THE DYNAMICAL MATRIX IN THE SUPERCELL
         =================================================
@@ -3345,6 +3453,12 @@ WARNING: Effective charges are not accounted by this method
         
         Here the :math:`\tilde e_{q\nu}` are the complex polarization vectors in the q point so that :math:`\omega_{q\nu} = \omega_{\mu}`. 
         
+        Parameters
+        ----------
+            lo_to_split : string or ndarray
+                Could be a string with random, or a ndarray indicating the direction on which the
+                LO-TO splitting is computed. If None it is neglected.
+                If LO-TO is specified but no effective charges are present, then a warning is print and it is ignored.
         Results
         -------
             w_mu : ndarray( size = (n_modes), dtype = np.double)
@@ -3408,8 +3522,28 @@ WARNING: Effective charges are not accounted by this method
                 # Enforce reality to avoid complex polarization vectors
                 self.dynmats[iq] = re_part
 
-            # Diagonalize the matrix in the given q point
-            wq, eq = self.DyagDinQ(iq)
+            # Check if this is gamma (to apply the LO-TO splitting)
+            if Methods.get_min_dist_into_cell(bg, q, np.zeros(3)) < 1e-16 and lo_to_split is not None:
+                if self.effective_charges is None:
+                    warnings.warn("WARNING: Requested LO-TO splitting without effective charges. LO-TO ignored.")
+                
+                # Initialize the Force Constant
+                t2 = ForceTensor.Tensor2(self.structure, self.structure.generate_supercell(self.GetSupercell()), self.GetSupercell())
+                t2.SetupFromPhonons(self)
+
+                if lo_to_split.lower() == "random":
+                    fc_gamma = t2.Interpolate(np.zeros(3))
+                else:
+                    fc_gamma = t2.Interpolate(np.zeros(3), q_direct= -lo_to_split)
+                
+                _m_ = np.tile(self.structure.get_masses_array(), (3,1)).T.ravel()
+                d_gamma = fc_gamma / np.sqrt(np.outer(_m_, _m_))
+                wq2, eq = np.linalg.eigh(d_gamma)
+
+                wq = np.sqrt(np.abs(wq2)) * np.sign(wq2)
+            else:
+                # Diagonalize the matrix in the given q point
+                wq, eq = self.DyagDinQ(iq)
 
             # Iterate over the frequencies of the given q point
             nm_q = i_mu
@@ -3753,7 +3887,7 @@ def ImposeSCTranslations(fc_supercell, unit_cell_structure, supercell_structure,
     
         
 
-def GetSupercellFCFromDyn(dynmat, q_tot, unit_cell_structure, supercell_structure, itau = None, img_thr = 1e-6):
+def GetSupercellFCFromDyn(dynmat, q_tot, unit_cell_structure, supercell_structure, itau = None, img_thr = 1e-5):
     """
     GET THE REAL SPACE FORCE CONSTANT 
     =================================
@@ -3859,7 +3993,7 @@ def GetSupercellFCFromDyn(dynmat, q_tot, unit_cell_structure, supercell_structur
 
 
 
-def GetDynQFromFCSupercell(fc_supercell, q_tot, unit_cell_structure, supercell_structure, itau = None):
+def GetDynQFromFCSupercell(fc_supercell, q_tot, unit_cell_structure, supercell_structure,  itau = None, fc2 = None):
     r"""
     GET THE DYNAMICAL MATRICES
     ==========================
@@ -3905,6 +4039,8 @@ def GetDynQFromFCSupercell(fc_supercell, q_tot, unit_cell_structure, supercell_s
     #dynmat = np.zeros( (nq, 3*nat, 3*nat), dtype = np.complex128, order = "F")
     dynmat = np.zeros((nq, 3*nat, 3*nat), dtype = np.complex128)
     
+    if fc2 is not None:
+        dynmat2 = np.zeros((nq, 3*nat, 3*nat), dtype = np.complex128)
     #print "NQ:", nq
     
     
@@ -3919,6 +4055,9 @@ def GetDynQFromFCSupercell(fc_supercell, q_tot, unit_cell_structure, supercell_s
             q_dot_R = q_tot.dot(R)
             
             dynmat[:,3*i_uc: 3*i_uc +3,3*j_uc: 3*j_uc + 3] += np.einsum("a, bc",  np.exp(-1j * 2*np.pi * q_dot_R), fc_supercell[3*i : 3*i + 3, 3*j : 3*j + 3]) / nq
+
+            if fc2 is not None:
+                dynmat2[:,3*i_uc: 3*i_uc +3,3*j_uc: 3*j_uc + 3] += np.einsum("a, bc",  np.exp(-1j * 2*np.pi * q_dot_R), fc2[3*i : 3*i + 3, 3*j : 3*j + 3]) / nq
             
 #    
 #    # Fill the dynamical matrix
@@ -3940,8 +4079,10 @@ def GetDynQFromFCSupercell(fc_supercell, q_tot, unit_cell_structure, supercell_s
         
     
         
-    
-    return dynmat
+    if fc2 is not None:
+        return dynmat, dynmat2
+    else:
+        return dynmat
 
 
 
@@ -4141,8 +4282,9 @@ List of ASE vectors: {}""".format(delta_R[0], delta_R[1], delta_R[2], R_cN)
     if adjust_qstar:
         dyn.AdjustQStar()
 
-
     return dyn
+
+
 
 
 
