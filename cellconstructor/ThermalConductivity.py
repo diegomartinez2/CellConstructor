@@ -110,7 +110,7 @@ natural_isotopes = {\
         'Sb':[[0.5721, 120.9038], [0.4279, 122.9042]],\
         'Te':[[0.0009, 119.9040], [0.0255, 121.9030], [0.0089, 122.9042], [0.0474, 123.9028], [0.0707, 124.9044], [0.1884, 125.9033], [0.3174, 127.9045], [0.3408, 129.9062]],\
         'I' :[[1.0000, 126.9045]],\
-        'Xe':[[0.0009,123.905896],  [[0.0009,125.904269], [0.0192, 127.903530], [0.2644,128.904779], [0.0408,129.903508], [0.2118,130.905082], [0.2689,131.904154], [0.1044,133.905395], [0.0887,135.907220]],\
+        'Xe':[[0.0009,123.905896],  [0.0009,125.904269], [0.0192, 127.903530], [0.2644,128.904779], [0.0408,129.903508], [0.2118,130.905082], [0.2689,131.904154], [0.1044,133.905395], [0.0887,135.907220]],\
         'Cs':[[1.0000,132.905447]],\
         'Ba':[[0.00106,129.906310], [0.00101,131.905056], [0.02417,133.904503], [0.06592,134.905683], [0.07854,135.904570], [0.11232,136.905821], [0.71698,137.905241]],\
         'La':[[0.00090,137.907107], [0.99910,138.906348]],\
@@ -137,7 +137,7 @@ natural_isotopes = {\
         'Pt':[[0.00014,189.959930], [0.00782,191.961035], [0.32967,193.962664], [0.33832,194.964774], [0.25242,195.964935], [0.07163,197.967876]],\
         'Au':[[1.0000,196.966552]],\
         'Hg':[[0.0015,195.965815], [0.0997,197.966752], [0.1687,198.968262], [0.2310,199.968309], [0.1318,200.970285], [0.2986,201.970626], [0.0687,203.973476]],\
-        'Tl':[[0.29524,202.972329], [0.70476,Tl 204.974412]],\
+        'Tl':[[0.29524,202.972329], [0.70476, 204.974412]],\
         'Pb':[[0.014,203.973029],[0.241,205.974449], [0.221,206.975881], [0.524,207.976636]],\
         'Bi':[[1.0000,208.980383]],}
 # This should be continued!
@@ -220,7 +220,7 @@ def heat_capacity(freqs, temperature, hbar1, kb1, cp_mode = 'quantum'):
             return 0.0
     elif(cp_mode == 'classical'):
         return kb1
-    
+
 
     #####################################################################################################################################
 
@@ -790,9 +790,9 @@ def stupid_centering_fc3_v2(tensor3, Far = 1):
                         #    match1 = False
                         #    match2 = False
                         #    for ir in range(tensor3.n_R):
-                        #        rvec2 = tensor3.r_vector2[:,ir].copy() 
+                        #        rvec2 = tensor3.r_vector2[:,ir].copy()
                         #        xvec2 = np.dot(rvec2, irsup)
-                        #        rvec3 = tensor3.r_vector3[:,ir].copy() 
+                        #        rvec3 = tensor3.r_vector3[:,ir].copy()
                         #        xvec3 = np.dot(rvec3, irsup)
                         #        for i1 in range(-1,2):
                         #            if(not match1):
@@ -818,7 +818,7 @@ def stupid_centering_fc3_v2(tensor3, Far = 1):
                         #            print('Matched!', ir, index, float(iuc)/float(len(r_vector2)))
                         #            break
                         #    if(match1 and match2):
-                        #        fc3[iuc][3*iat:3+3*iat,3*jat:3+3*jat,3*kat:3+3*kat] = tensor3.tensor[ir][3*iat:3+3*iat,3*jat:3+3*jat,3*kat:3+3*kat]/float(multiplicity[index][ir])                                    
+                        #        fc3[iuc][3*iat:3+3*iat,3*jat:3+3*jat,3*kat:3+3*kat] = tensor3.tensor[ir][3*iat:3+3*iat,3*jat:3+3*jat,3*kat:3+3*kat]/float(multiplicity[index][ir])
                          #   else:
                          #       print(match1, match2)
                          #       raise RuntimeError('Could not find triplet!')
@@ -969,7 +969,7 @@ class ThermalConductivity:
 
         Necesary:
 
-            dyn            : SSCHA dynamical matrix object 
+            dyn            : SSCHA dynamical matrix object
             tensor3        : SSCHA 3rd order force constants
 
             kpoint_grid    : Initializes the grid for Brillouin zone integration. It is used in the calculation of lattice thermal conductivity and
@@ -977,7 +977,7 @@ class ThermalConductivity:
             smearing_scale : Scale for the smearing constant if adaptive smearing is used. Default value is 2.0
             smearing_type  : Type of smearing used. Could be constant (same for all phonon modes) or adaptive (scaled by the phonon group velocity and the q point density).
             cp_mode        : Flag determining how phonon occupation factors are calculated (quantum/classical), default is quantum
-            off_diag       : Boolean parameter for the calculation of the off-diagonal elements of group velocity. 
+            off_diag       : Boolean parameter for the calculation of the off-diagonal elements of group velocity.
 
         """
 
@@ -1034,9 +1034,9 @@ class ThermalConductivity:
 
         """
             Routine to save most of the information needed for further postprocessing.
-            
+
             filename : Title of the file the information is to be stored to
-        
+
         """
 
         hf = h5py.File(filename, 'w')
@@ -1059,7 +1059,7 @@ class ThermalConductivity:
         hf.create_dataset('nkpt', data = self.nkpt)
         hf.create_dataset('nband', data = self.nband)
         hf.create_dataset('nirrkpt', data = self.nirrkpt)
-        
+
         irrqpts = [hf.create_group('irreducible_kpoint' + str(i + 1)) for i in range(self.nirrkpt)]
         for ikpt in range(self.nirrkpt):
             irrqpts[ikpt].create_dataset('k_point', data = self.irr_k_points[ikpt])
@@ -1192,12 +1192,12 @@ class ThermalConductivity:
                         if(temp not in self.lineshapes.keys()):
                             self.lineshapes[temp] = np.zeros((self.nkpt, self.nband, ne))
                         self.lineshapes[temp][jkpt] = np.array(hf.get('irreducible_kpoint' + str(i + 1)).get(key))
-                    
+
         for key in hf.keys():
             if('kappa' in key):
                 temp = key.split('_')[-1]
                 self.kappa[temp] = np.array(hf.get(key))
-    
+
     def set_kpoints(self):
 
         """
@@ -2106,7 +2106,7 @@ class ThermalConductivity:
         isotopes           : The relative concentration and masses of isotopes
         method             : Method by which phonon lifetimes are to be calculated.
             fortran/python : practically means only how many times fortran routine is being called. "fortran" much faster.
-            LA/P           : Approximation used for the lifetimes. 
+            LA/P           : Approximation used for the lifetimes.
                              LA means one shot approximation defined in J. Phys.: Condens. Matter 33 363001 . Default value.
                              P means perturbative approximation. The one used by most other codes!
         """
