@@ -1281,8 +1281,10 @@ class ThermalConductivity:
         for iqpt in range(self.nirrkpt):
             irrgrid.append(self.qpoints[self.qstar_list[iqpt][0]])
         irrgrid = np.asfortranarray(irrgrid)
-        (scattering_grid, scattering_weight) = thermal_conductivity.scattering_grids.get_scattering_q_grid(rotations, irrgrid, self.qpoints, \
-                self.scattering_qpoints, self.nirrkpt, self.nkpt, self.scattering_nkpt, nsym)
+        (scattering_grid, scattering_weight) = \
+                thermal_conductivity.scattering_grids.get_scattering_q_grid( \
+                rotations, irrgrid, self.qpoints, self.scattering_qpoints, \
+                self.nirrkpt, self.nkpt, self.scattering_nkpt, nsym)
         self.scattering_grids = []
         self.scattering_weights = []
         for iqpt in range(self.nirrkpt):
