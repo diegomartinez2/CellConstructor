@@ -2824,7 +2824,7 @@ class ThermalConductivity:
         # phases = np.einsum('ij,j->i', self.ruc, q)*2.0*np.pi
         # exponents = np.exp(1j*phases)
         # dynmat = np.einsum('ijk,i->jk', self.force_constants, exponents) * mm_inv_mat
-                dynmat = np.zeros_like(self.force_constants[0], dtype = complex)
+        dynmat = np.zeros_like(self.force_constants[0], dtype = complex)
         #phases = np.einsum('ij,j->i', self.ruc, q)*2.0*np.pi
         #exponents = np.exp(1j*phases)
         #dynmat = np.einsum('ijk,i->jk', self.force_constants, exponents) * mm_inv_mat
