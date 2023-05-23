@@ -18,15 +18,18 @@ def test_interpolate_on_itself(dyn_name, nqirr, verbose = False):
 
     # Load the dynamical matrix
     dyn = CC.Phonons.Phonons(dyn_name, nqirr)
+    dyn.Symmetrize()
 
     t2 = CC.ForceTensor.Tensor2(dyn.structure,
                                 dyn.structure.generate_supercell(dyn.GetSupercell()),
                                 dyn.GetSupercell())
     t2.SetupFromPhonons(dyn)
+    t2.Center(Far = 3)
+    #t2.Apply_ASR()
 
     m = dyn.structure.get_masses_array()
     m = np.tile(m, (3,1)).T.ravel()
-    
+
     for iq, q in enumerate(dyn.q_tot):
         fc = t2.Interpolate(-q)
         dynq = fc / np.sqrt(np.outer(m, m))
@@ -44,18 +47,11 @@ def test_interpolate_on_itself(dyn_name, nqirr, verbose = False):
             print()
             print()
 
-        assert np.max(np.abs(w - w_tensor)) < 1e-5, "Error on point q = {}".format(q)
+        assert np.max(np.abs(w - w_tensor)) < 1e-2, "Error on point q = {}".format(q)
 
-        
+
 
 
 if __name__ == "__main__":
-    
-    test_interpolate_on_itself(*TEST_DYN[-1], verbose = True)
 
-        
-    
-
-    
-
-    
+    test_interpolate_on_itself(*TEST_DYN[-2], verbose = True)

@@ -137,7 +137,7 @@ Error, to compute the volume the structure must have a unit cell initialized:
         mass = ase_struct.get_masses()
         for i, ma in enumerate(mass):
             if not self.atoms[i] in self.masses:
-                self.masses[self.atoms[i]] = ma * ELECTRON_MASS_UMA
+                self.masses[self.atoms[i]] = ma  / MASS_RY_TO_UMA
         
 
     def copy(self):
@@ -343,6 +343,18 @@ Error, to compute the volume the structure must have a unit cell initialized:
         read_atoms = True
         if read_espresso:
             read_atoms = False
+
+            # Get the alat from the input file
+            espresso_dict = Methods.read_namelist(lines)
+            if "system" in espresso_dict:
+                if "alat" in espresso_dict["system"]:
+                    alat = espresso_dict["system"]["alat"]*BOHR_TO_ANGSTROM
+                elif "celldm(1)" in espresso_dict["system"]:
+                    alat = espresso_dict["system"]["celldm(1)"]*BOHR_TO_ANGSTROM
+
+                if "ibrav" in espresso_dict["system"]:
+                    assert espresso_dict["system"]["ibrav"] == 0, "ibrav != 0 not supported yet"
+            
         cell_present = False
         
         read_crystal = False
@@ -439,11 +451,7 @@ Error, to compute the volume the structure must have a unit cell initialized:
         atoms = ase.io.read(filename)
 
         # Now obtain all the information
-        self.unit_cell = atoms.get_cell()
-        self.has_unit_cell = True
-        self.atoms = atoms.get_chemical_symbols()
-        self.N_atoms = len(self.atoms)
-        self.coords = atoms.positions.copy()
+        self.generate_from_ase_atoms(atoms)
         
 
     def set_unit_cell(self, filename, delete_copies = False, rescale_coords = False):
@@ -968,7 +976,8 @@ Error, to compute the volume the structure must have a unit cell initialized:
             
             #print "Max distance:", np.max(effective_distances)
 
-            assert all(eq_atm == equiv_atoms)  
+            assert all(np.array(eq_atm) == np.array(equiv_atoms))  
+            eq_atm = equiv_atoms
 
             if return_distances:
                 return equiv_atoms, effective_distances

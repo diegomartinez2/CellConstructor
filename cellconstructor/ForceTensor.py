@@ -1,14 +1,14 @@
 from __future__ import print_function
-from __future__ import division 
+from __future__ import division
 
 # Import for python2/3 compatibility
 import cellconstructor.Phonons as Phonons
-import cellconstructor.Methods as Methods 
+import cellconstructor.Methods as Methods
 import cellconstructor.symmetries as symmetries
 import cellconstructor.Units as Units
 
 import cellconstructor.Settings as Settings
-from cellconstructor.Settings import ParallelPrint as print 
+from cellconstructor.Settings import ParallelPrint as print
 
 
 import numpy as np
@@ -39,11 +39,11 @@ class GenericTensor:
         """
         Define the tensors
         """
-        self.supercell_size = supercell_size 
+        self.supercell_size = supercell_size
         self.itau = supercell_structure.get_itau(unitcell_structure) - 1
-        
+
         self.tau=unitcell_structure.coords
-        
+
         self.nat = unitcell_structure.N_atoms
 
         self.unitcell_structure = unitcell_structure
@@ -60,7 +60,7 @@ class Tensor2(GenericTensor):
 
     def __init__(self, unitcell_structure, supercell_structure, supercell_size):
         GenericTensor.__init__(self, unitcell_structure, supercell_structure, supercell_size)
-        
+
         self.n_R = np.prod(np.prod(supercell_size))
         self.x_r_vector2 = np.zeros((3, self.n_R), dtype = np.intc, order = "F")
         self.r_vector2 = np.zeros((3, self.n_R), dtype = np.double, order = "F")
@@ -74,19 +74,19 @@ class Tensor2(GenericTensor):
         # Prepare the values ready to be used inside quantum espresso Fortran subroutines
         self.QE_tau = None
         self.QE_omega = None
-        self.QE_zeu = None 
+        self.QE_zeu = None
         self.QE_bg = None
 
         # NOTE: this QE_alat is not the unit of measure like in QE subroutines,
         # But rather the dimension of the first unit-cell vector in Bohr.
         # It is used for computing the ideal integration size in rgd_blk from symph
-        self.QE_alat = None 
+        self.QE_alat = None
 
     def SetupFromPhonons(self, phonons):
         """
         SETUP FROM PHONONS
         ==================
-        
+
         Setup the 2rank tensor from a phonons class
 
         Parameters
@@ -95,6 +95,23 @@ class Tensor2(GenericTensor):
                 The dynamical matrix from which you want to setup the tensor
         """
 
+        # Check if the supercell is correct
+        ERR = """
+Error, the supercell of the phonon object is {}.
+       it must match with the supercell defined for the Tensor2: {}
+""".format(phonons.GetSupercell(), self.supercell_size)
+        #print(ERR)
+
+        assert np.all([self.supercell_size[i] == phonons.GetSupercell()[i] for i in range(3)]), ERR
+
+        # Check that no 1 atom with 1 q point
+        if np.prod(phonons.GetSupercell()) == 1 and phonons.structure.N_atoms == 1:
+            ERR = """
+Error, cannot initialize a tensor from a structure with 1 atom with only Gamma
+       check if you imported the dynamical matrix with the correct nqirr.
+
+"""
+            raise ValueError(ERR)
         current_dyn = phonons.Copy()
 
         # Check if the dynamical matrix has the effective charges
@@ -102,7 +119,7 @@ class Tensor2(GenericTensor):
             time1 = time.time()
             self.effective_charges = current_dyn.effective_charges.copy()
             assert current_dyn.dielectric_tensor is not None, "Error, effective charges provided, but not the dielectric tensor."
-            
+
             self.dielectric_tensor = current_dyn.dielectric_tensor.copy()
 
             self.QE_alat = phonons.alat * Units.A_TO_BOHR
@@ -161,7 +178,7 @@ class Tensor2(GenericTensor):
 
         # Get the dynamical matrix in the supercell
         time3 = time.time()
-        
+
         # Apply the acoustic sum rule (could be spoiled by the effective charges)
         #iq_gamma = np.argmin(np.sum(np.array(current_dyn.q_tot)**2, axis = 1))
         #symmetries.CustomASR(current_dyn.dynmats[0])
@@ -175,7 +192,7 @@ class Tensor2(GenericTensor):
         # fc_q = dyn.GetMatrixFFT()
         # fc_real_space = np.conj(np.fft.fftn(np.conj(fc_q), axes = (0,1,2))) / np.prod(current_dyn.GetSupercell())
         # fc_real_space is already in tensor form (first three indices the R_2 components, or maybe -R_2) in crystalline coordinates)
-        # It must be just rearranged in the correct tensor 
+        # It must be just rearranged in the correct tensor
         super_dyn = current_dyn.GenerateSupercellDyn(phonons.GetSupercell(), img_thr  =1e-6)
         time4 = time.time()
 
@@ -202,7 +219,7 @@ class Tensor2(GenericTensor):
         ----------
             - tensor : ndarray( size=(3*nat_sc, 3*nat_sc))
                 The matrix to be converted in this Tensor2.
-                
+
         """
 
         nat = self.nat
@@ -219,13 +236,13 @@ class Tensor2(GenericTensor):
 
         nat = self.unitcell_structure.N_atoms
         nat_sc = nat * self.n_R
-            
+
         for i_x in range(self.supercell_size[0]):
             for i_y in range(self.supercell_size [1]):
                 for i_z in range(self.supercell_size[2]):
                     i_block = self.supercell_size[1] * self.supercell_size[2] * i_x
-                    i_block += self.supercell_size[2] * i_y 
-                    i_block += i_z 
+                    i_block += self.supercell_size[2] * i_y
+                    i_block += i_z
                     self.x_r_vector2[:, i_block] = np.array([i_x, i_y, i_z])
                     self.r_vector2[:, i_block] = self.unitcell_structure.unit_cell.T.dot(self.x_r_vector2[:, i_block])
 
@@ -234,71 +251,71 @@ class Tensor2(GenericTensor):
                             # Get the atom in the supercell corresponding to the one in the unit cell
                             na2_vect = self.unitcell_structure.coords[na2, :] + self.r_vector2[:, i_block]
                             nat2_sc = np.argmin( [np.sum( (self.supercell_structure.coords[k, :] - na2_vect)**2) for k in range(nat_sc)])
-                            
+
                             self.tensor[i_block, 3*na1:3*na1+3, 3*na2: 3*na2+3] = tensor[3*na1 : 3*na1+3, 3*nat2_sc : 3*nat2_sc + 3]
 
 
     def SetupFromFile(self, fname,file_format='Phonopy'):
         """
         Setup the second order force constant form 2nd order tensor written in a file
-        
+
         Warning about the D3Q format:
         Coerently with the indexing of the 3rd order FCs, in the D3Q format with FC(s,t,R)
         we refer to the FC between atoms (s,0) and (t,R). This is different from the format
         used in the original d3q code by Lorenzo Paulatto, where the FC(s,t,R) refers to
         (s,R) and (t,0), or ,equivalently, (s,0) and (t,-R)
-        
-        
+
+
         Parameters
         ----------
             fname : string
                 The file name
             file_format : string
                 The format of the file
-        """        
-        
-        
+        """
+
+
         if Settings.am_i_the_master():
-            
-            if file_format == 'Phonopy':      
-                
+
+            if file_format == 'Phonopy':
+
                 print("  ")
                 print(" FC2 Phonopy reading format: TODO" )
-                print("  ")      
+                print("  ")
                 exit()
 
-            elif file_format == 'D3Q': 
-            
+            elif file_format == 'D3Q':
+
                 print("  ")
                 print(" Reading FC2 from "+fname)
                 print(" (D3Q format) " )
                 print("  ")
-                
+
                 first_nR_read = True
-                with open(fname, "r") as f:            
+                with open(fname, "r") as f:
                 # ============== Skip header, if present ===
                     if len(f.readline().split()) ==4:
                         f.seek(0)
-                    else:    
+                    else:
                         f.seek(0)
                         while True:
                             if len(f.readline().split()) ==1:
                                 break
                         f.readline()
-                # ===========================================                   
+                # ===========================================
                     for nat1 in range(self.nat):
                         for nat2 in range(self.nat):
                                 for alpha in range(3):
                                     for beta in range(3):
                                             [alpha_read,beta_read,
                                             nat1_read, nat2_read]=[int(l)-1 for l in f.readline().split()]
-                                            
+
                                             assert ([nat1,nat2,alpha,beta]==[nat1_read,nat2_read,
                                                                                         alpha_read,beta_read])
-                                        
+
 
                                             nR_read=int(f.readline().split()[0])
-                                            
+
                                             if (first_nR_read) :
                                                 self.n_R=nR_read
                                                 self.tensor=np.zeros((self.n_R,3*self.nat,3*self.nat),dtype=np.float64)
@@ -306,36 +323,36 @@ class Tensor2(GenericTensor):
                                                 first_nR_read = False
                                             else :
                                                 assert ( nR_read == self.n_R ), " Format unknown - different blocks size "
-                                    
+
                                             for iR in range(self.n_R):
-                                                    
-                                                    res=[l for l in f.readline().split()] 
-                                                    
+
+                                                    res=[l for l in f.readline().split()]
+
                                                     [self.x_r_vector2[0, iR],
                                                     self.x_r_vector2[1, iR],
-                                                    self.x_r_vector2[2, iR]]=[int(l) for l in res[:-1]] 
-                                                    
+                                                    self.x_r_vector2[2, iR]]=[int(l) for l in res[:-1]]
+
                                                     self.tensor[iR, 3*nat1 + alpha, 3*nat2 + beta]=np.double(res[-1])
-                                                    
+
                 self.r_vector2=self.unitcell_structure.unit_cell.T.dot(self.x_r_vector2)
-        
+
         # Broadcast
-        
+
         self.tensor = Settings.broadcast(self.tensor, enforce_double=True)
         self.x_r_vector2 = Settings.broadcast(self.x_r_vector2)
         self.r_vector2 = Settings.broadcast(self.r_vector2, enforce_double=True)
-        self.n_R = Settings.broadcast(self.n_R)       
-        
-        
-    def Center(self, nneigh=None, Far=1,tol=1.0e-5):
+        self.n_R = Settings.broadcast(self.n_R)
+
+
+    def Center(self, nneigh=None, Far=2,tol=1.0e-5):
         """
-        CENTERING 
+        CENTERING
         =========
 
         This subroutine will center the second order force constant.
-        This means that for each atomic indices in the tensor, it will be identified by the lowest 
-        distance between the replica of the atoms. Moreover, in case of existance of other elements 
-        not included in the original supercell with the same distance, the tensor will be equally subdivided between equivalent of atoms. 
+        This means that for each atomic indices in the tensor, it will be identified by the lowest
+        distance between the replica of the atoms. Moreover, in case of existance of other elements
+        not included in the original supercell with the same distance, the tensor will be equally subdivided between equivalent of atoms.
 
         This function should be called before performing the Fourier interpolation.
 
@@ -345,96 +362,100 @@ class Tensor2(GenericTensor):
             - nneigh [default= None]: integer
                 if different from None, it sets a maximum distance allowed to consider
                 equivalent atoms in the centering.
-                
+
                 nneigh > 0
-                
-                    for each atom the maximum distance is: 
-                    the average between the nneigh-th and the nneigh+1-th neighbor distance 
-                    (if, for the considered atom, the supercell is big enough to find up to 
+
+                    for each atom the maximum distance is:
+                    the average between the nneigh-th and the nneigh+1-th neighbor distance
+                    (if, for the considered atom, the supercell is big enough to find up to
                     the nneigh+1-th neighbor distance, otherwise it is the maxmimum distance +10%)
-                
+
                 nneigh = 0
-                
-                    the maximum distance is the same for all the atoms, equal to 
-                    maximum of the minimum distance between equivalent atoms (+ 10%) 
-                
+
+                    the maximum distance is the same for all the atoms, equal to
+                    maximum of the minimum distance between equivalent atoms (+ 10%)
+
                 nneigh < 0
-                
-                    the maximum distance is the same for all the atoms, equal to 
-                    maximum of the |nneigh|-th neighbor distances found for all the atoms                 
-                    (if, for the considered atom, the supercell is big enough to find up to 
-                    the |nneigh|+1-th neighbor distance, otherwise it is the maxmimum distance +10%)  
-                    
+
+                    the maximum distance is the same for all the atoms, equal to
+                    maximum of the |nneigh|-th neighbor distances found for all the atoms
+                    (if, for the considered atom, the supercell is big enough to find up to
+                    the |nneigh|+1-th neighbor distance, otherwise it is the maxmimum distance +10%)
+
             - Far [default= 1]: integer
-            
-                    In the centering, supercell equivalent atoms are considered within 
+
+                    In the centering, supercell equivalent atoms are considered within
                     -Far,+Far multiples of the super-lattice vectors
-        """    
+        """
+        # Check if the phonons is initialized TODO
+        #if np.max(np.abs(self.x_r_vector2)) == 0:
+        #    raise ValueError("Error, Tensor object not initialized!")
+
         if Settings.am_i_the_master():
-            
-            
+
+
             t1 = time.time()
-        
+
             if self.verbose:
                 print(" ")
                 print(" ======================= Centering 2nd FCs ==========================")
-                print(" ")         
+                print(" ")
 
             # The supercell total size
             #
             nq0=self.supercell_size[0]
             nq1=self.supercell_size[1]
             nq2=self.supercell_size[2]
-            
+
             # by default no maximum distances
             dist_range=np.ones((self.nat))*np.infty
             #
             if nneigh!=None:
             # =======================================================================
-                uc_struc = self.unitcell_structure        
-                sc_struc = self.supercell_structure 
+                uc_struc = self.unitcell_structure
+                sc_struc = self.supercell_structure
 
                 # lattice vectors in Angstrom in columns
                 uc_lat = uc_struc.unit_cell.T
                 sc_lat = sc_struc.unit_cell.T
 
                 # atomic positions in Angstrom in columns
-                uc_tau = uc_struc.coords.T 
+                uc_tau = uc_struc.coords.T
                 sc_tau = sc_struc.coords.T
-                
+
                 uc_nat = uc_tau.shape[1]
                 sc_nat = sc_tau.shape[1]
-                
+
                 # == calc dmin ==================================================
                 # calculate the distances between the atoms in the supercell replicas
-                
+
                 # array square distances between i-th and the j-th
-                # equivalent atoms of the supercell 
+                # equivalent atoms of the supercell
                 d2s=np.empty((   (2*Far+1)**3 , sc_nat, sc_nat   ))
-                
+
                 rvec_i=sc_tau
                 for j, (Ls,Lt,Lu) in enumerate(
                     itertools.product(range(-Far,Far+1),range(-Far,Far+1),range(-Far,Far+1))):
-                    
-                    rvec_j = sc_tau+np.dot(sc_lat,np.array([[Ls,Lt,Lu]]).T) 
-                    
+
+                    rvec_j = sc_tau+np.dot(sc_lat,np.array([[Ls,Lt,Lu]]).T)
+
                     d2s[j,:,:]=scipy.spatial.distance.cdist(rvec_i.T,rvec_j.T,"sqeuclidean")
-                
+
                 # minimum of the square distances
                 d2min=d2s.min(axis=0)
                 # minimum distance between two atoms in the supercell,
                 # considering also equivalent supercell images
-                dmin=np.sqrt(d2min) 
+                dmin=np.sqrt(d2min)
                 #
                 if nneigh == 0:
-                    dist_range=np.ones((self.nat))*np.amax(dmin)*1.1                                          
+                    dist_range=np.ones((self.nat))*np.amax(dmin)*1.1
                     if self.verbose:
                         print(" ")
                         print(" Maximum distance allowed set equal to ")
                         print(" the max of the minimum distances between ")
                         print(" supercell equivalent atoms (+10%): {:8.5f} A".format(dist_range[0]))
-                        print(" ")                    
-                    
+                        print(" ")
+
                     # to include all the equivalent atoms having the smallest distance
                     # between them. It does not correspond to taking dist_range=+infity
                     # because, with the centering, smallest triangles with equivalent points can be obtained
@@ -442,9 +463,9 @@ class Tensor2(GenericTensor):
                     # with dist_range=+infity these triangles are included, with dist_range=np.amax(dmin)
                     # they are not included (here I add the 10%)
 
-                else:                
-                    #== max dist of the n-th neighbors ============================                
-                    # For all the uc_nat atoms of unit cell (due to the lattice translation symmetry, 
+                else:
+                    #== max dist of the n-th neighbors ============================
+                    # For all the uc_nat atoms of unit cell (due to the lattice translation symmetry,
                     # I can limit the analysis to the atoms of a unit cell - not the supercell)
                     # I look for the nneigh-th neighbor distance and build the array dist_range
                     #
@@ -453,16 +474,16 @@ class Tensor2(GenericTensor):
                     for i in range(uc_nat):     # for each unit cell atom
                         ds=dmin[i,:].tolist()   # list of distances from other atoms
                         ds.sort()               # list of distances from the i-th atom in increasing order
-                        u=[]                    # same list, without repetitions 
+                        u=[]                    # same list, without repetitions
                         for j in ds:
                             for k in u:
                                 if np.allclose(k,j):
                                     break
                             else:
                                 u.append(j)
-                        # the list u of increasing distances for i-th atom has been completed  
+                        # the list u of increasing distances for i-th atom has been completed
                         # try do consider the average of the nneigh-th and nneigh+1-th distance to nth_len
-                        # if it fails, because there are not enough atoms to reach the n-th neighbors, 
+                        # if it fails, because there are not enough atoms to reach the n-th neighbors,
                         # then consider the maximum distance found (augmented of 10%)
                         try:
                             dist_range[i]=(.5*(u[nn]+u[nn+1]))
@@ -473,42 +494,42 @@ class Tensor2(GenericTensor):
                             dist_range[i]=1.1*max(u)
                     #
                     if nneigh < 0 :
-                        # 
+                        #
                         dist_range=np.ones((self.nat))*np.amax(dist_range)
                         if self.verbose:
                             print(" ")
-                            print(" Maximum distance allowed set equal to {:8.5f} A".format(dist_range[0])) 
-                            print(" ")                                                                    
+                            print(" Maximum distance allowed set equal to {:8.5f} A".format(dist_range[0]))
+                            print(" ")
                         #
-                    else :    
+                    else :
                         if self.verbose:
                             print(" ")
-                            print(" Maximum distance allowed set equal to:".format(dist_range[0])) 
+                            print(" Maximum distance allowed set equal to:".format(dist_range[0]))
                             print(" ")
                             for i in range(self.nat):
-                                print("{:8.5f} A for atom {}".format(dist_range[i],i+1))                                
-                            print(" ")                                                                    
+                                print("{:8.5f} A for atom {}".format(dist_range[i],i+1))
+                            print(" ")
                         #
-            #==============================================================        
-            # look for the minimum supercell 
+            #==============================================================
+            # look for the minimum supercell
             #
-            xRmin=np.min(self.x_r_vector2,1) 
-            xRmax=np.max(self.x_r_vector2,1) 
+            xRmin=np.min(self.x_r_vector2,1)
+            xRmax=np.max(self.x_r_vector2,1)
             xRlen=xRmax-xRmin+np.ones((3,),dtype=int)
-                               
+
             tensor= np.transpose(self.tensor,axes=[1,2,0])
             self.n_sup = np.prod(xRlen)
 
             alat=self.unitcell_structure.unit_cell
-            
+
             weight,xR2 = secondorder.second_order_centering.analysis(Far,tol,dist_range,xRlen,
                                                                       self.x_r_vector2,
                                                                       alat,
-                                                                      self.tau, tensor,self.nat,self.n_R)  
-            
-            
-            mask= weight >0 
- 
+                                                                      self.tau, tensor,self.nat,self.n_R)
+
+
+            mask= weight >0
+
             mask=np.repeat(mask[np.newaxis,...], (2*Far+1)*(2*Far+1), axis=0)
 
             xR2_reshaped=xR2[:,mask]
@@ -519,17 +540,17 @@ class Tensor2(GenericTensor):
             self.n_R=xR2_unique.shape[1]
             self.x_r_vector2 = xR2_unique
             self.r_vector2=self.unitcell_structure.unit_cell.T.dot(self.x_r_vector2)
-    
+
             centered=secondorder.second_order_centering.center(tensor,weight,
                                                              self.x_r_vector2,xR2,
                                                              Far,self.nat,
                                                              self.n_R,nblocks_old)
-            t2 = time.time() 
-            
+            t2 = time.time()
+
             self.tensor = np.transpose(centered, axes=[2,0,1])
-          
-            if self.verbose:               
-                print(" Time elapsed for computing the centering: {} s".format( t2 - t1)) 
+
+            if self.verbose:
+                print(" Time elapsed for computing the centering: {} s".format( t2 - t1))
                 print(" Memory required for the centered tensor: {} Gb".format(centered.nbytes / 1024.**3))
                 print(" ")
                 print(" ====================================================================")
@@ -544,56 +565,56 @@ class Tensor2(GenericTensor):
 
     def Apply_ASR(self,PBC=False,power=0,maxiter=1000,threshold=1.0e-12):
         """
-        Apply_ASR 
+        Apply_ASR
         =========
 
         This subroutine apply the ASR to the second order force constants iteratively.
-        For each iteration, the ASR is imposed on the second index 
-        (any of the two indeces would be equivalent, apart from the subtleties that 
+        For each iteration, the ASR is imposed on the second index
+        (any of the two indeces would be equivalent, apart from the subtleties that
         would require the implementation for the first index, due to the representation chosen),
         and, subsequently, the symmetry by permutation of the two indeces is imposed.
-        
+
 
         Optional Parameters
         --------------------
             - PBC [default=False]: logical
-            
+
                 If True, periodic boundary conditions are considered. This is necessary, for example,
                 to apply this routine to non-centered tensors.
-            
+
             - power [default=0]: float >= 0
-            
-                The way the ASR is imposed on the second index:                
+
+                The way the ASR is imposed on the second index:
                 phi(i,j,a,b)=phi(i,j,a,b)-[\sum_b phi(i,j,a,b)]* |phi(i,j,a,b)|^pow / [sum_b |phi(i,j,a,b)|^pow]
-            
+
             - maxiter [default= 1000]: integer >= 0
 
-                n>0   Maximum number of iteration to reach the convergence. 
+                n>0   Maximum number of iteration to reach the convergence.
                 n=0   Endless iteration
-                
-                If a file STOP is found, the iteration stops.
-                
-            - threshold [default= 1.0e-12]: float > 0                
- 
-               Threshold for the convergence. The convergence is on two values: the value of sum on the third index and the 
-               variation of the phi after the imposition of the permutation symmetry (both divided by sum |phi|)
-        """    
 
-        
+                If a file STOP is found, the iteration stops.
+
+            - threshold [default= 1.0e-12]: float > 0
+
+               Threshold for the convergence. The convergence is on two values: the value of sum on the third index and the
+               variation of the phi after the imposition of the permutation symmetry (both divided by sum |phi|)
+        """
+
+
         if Settings.am_i_the_master():
-        
-        
+
+
             t1 = time.time()
-           
+
             if self.verbose:
                 print(" ")
                 print(" =======================    ASR    ========================== ")
-                print(" ")         
+                print(" ")
 
 
-        
-            xRmin=np.min(self.x_r_vector2,1) 
-            xRmax=np.max(self.x_r_vector2,1) 
+
+            xRmin=np.min(self.x_r_vector2,1)
+            xRmax=np.max(self.x_r_vector2,1)
             SClat=xRmax-xRmin+np.ones((3,),dtype=int)
 
 
@@ -605,21 +626,21 @@ class Tensor2(GenericTensor):
                                                              PBC,threshold,
                                                              maxiter,self.verbose,
                                                              self.nat,self.n_R)
-        
-            self.tensor=np.transpose(tensor_out,axes=[2,0,1]) 
 
-            t2 = time.time() 
+            self.tensor=np.transpose(tensor_out,axes=[2,0,1])
 
-            if self.verbose: 
+            t2 = time.time()
+
+            if self.verbose:
                 print(" ")
-                print(" Time elapsed for imposing ASR: {} s".format( t2 - t1)) 
+                print(" Time elapsed for imposing ASR: {} s".format( t2 - t1))
                 print(" ")
                 print(" ============================================================ ")
 
 
 
-        self.tensor = Settings.broadcast(self.tensor, enforce_double=True)        
-        
+        self.tensor = Settings.broadcast(self.tensor, enforce_double=True)
+
 
 
     def WriteOnFile(self, fname,file_format='Phonopy'):
@@ -634,7 +655,7 @@ class Tensor2(GenericTensor):
         In the first line there is the total number of blocks.
         Then for each block there is the lattice vector followed by the atomic index in the unit cell.
         Then there is the tensor for each cartesian coordinate
-        
+
         As follows:
 
         N_blocks
@@ -659,11 +680,11 @@ class Tensor2(GenericTensor):
         """
 
         if  file_format == 'Phonopy':
-            
+
             print("  ")
             print(" Writing FC2 on "+fname )
-            print(" (Phonopy format) ") 
-            print("  ") 
+            print(" (Phonopy format) ")
+            print("  ")
 
             with open(fname, "w") as f:
                 # Write the total number of blocks
@@ -687,12 +708,12 @@ class Tensor2(GenericTensor):
 
 
         elif file_format == 'D3Q':
-            
+
             print("  ")
             print(" Writing FC2 on "+fname )
-            print(" (D3Q format) ") 
-            print("  ")      
-            
+            print(" (D3Q format) ")
+            print("  ")
+
             with open(fname, "w") as f:
                 #TODO Print header...
 
@@ -704,21 +725,21 @@ class Tensor2(GenericTensor):
                                         f.write("{:>5}\n".format(self.n_R))
                                         for r_block  in range(self.n_R):
                                             f.write("{:>6d} {:>6d} {:>6d} {:16.8e}\n".format(self.x_r_vector2[0, r_block],self.x_r_vector2[1, r_block],self.x_r_vector2[2, r_block], self.tensor[r_block, 3*nat1 + alpha, 3*nat2 + beta]))
-                                            
-    def Interpolate(self, q2, asr = False, verbose = False, asr_range = None, q_direct = None):
+
+    def Interpolate(self, q2, asr = False, verbose = False, asr_range = None, q_direct = None, lo_to_splitting = True):
         """
         Perform the Fourier interpolation to obtain the force constant matrix at a given q
         This subroutine automatically performs the ASR
 
         Parameters
         ----------
-            q2 : ndarray(size = 3) 
+            q2 : ndarray(size = 3)
                 The q vector in 2pi/A
             asr : bool
                 If true, apply the acousitc sum rule
             asr_range : float, optional
                 If it is given, then use a gaussian as a activation function
-                for the asr, with asr_range equal to sigma. 
+                for the asr, with asr_range equal to sigma.
                 Otherwise, a sin(Nq)/(Nsin(q)) will be used, equal to apply the sum rule on a
                 grid.
             verbose : bool
@@ -728,6 +749,9 @@ class Tensor2(GenericTensor):
                 to pick the direction of the nonanalitical correction to apply.
                 If it is not initialized, a random versor will be chosen.
                 If it is the 0 vector, the nonanalitic correction at gamma will be avoided.
+            lo_to_splitting : bool
+                If True and the point is gamma, add the nonanalytic correction in a direction
+                given by q_direct
 
         Results
         -------
@@ -745,11 +769,11 @@ class Tensor2(GenericTensor):
 
         # If effective charges are present, then add the nonanalitic part
         if self.effective_charges is not None:
-            dynq = np.zeros((3,3,self.nat, self.nat), dtype = np.complex, order = "F")
+            dynq = np.zeros((3,3,self.nat, self.nat), dtype = np.complex128, order = "F")
             for i in range(self.nat):
                 for j in range(self.nat):
                     dynq[:,:, i, j] = final_fc[3*i : 3*i+3, 3*j:3*j+3]
-            
+
             # Add the nonanalitic part back
             QE_q = -q2 * self.QE_alat / Units.A_TO_BOHR
             symph.rgd_blk(0, 0, 0, dynq, QE_q, self.QE_tau, self.dielectric_tensor, self.QE_zeu, self.QE_bg, self.QE_omega, self.QE_alat, 0, +1.0, self.nat)
@@ -757,7 +781,7 @@ class Tensor2(GenericTensor):
             # Check if the vector is gamma
             if np.max(np.abs(q2)) < 1e-12:
                 q_vect = np.zeros(3, dtype = np.double)
-                compute_nonanal = True
+                compute_nonanal = lo_to_splitting
                 if q_direct is not None:
                     # the - to take into account the difference between QE convension and our
                     if np.linalg.norm(q_direct) < 1e-8:
@@ -789,32 +813,32 @@ class Tensor2(GenericTensor):
             for i in range(3):
                 v1 = np.zeros(nat*3, dtype = np.double)
                 v1[3*np.arange(nat) + i] = 1
-                v1 /= np.sqrt(v1.dot(v1)) 
+                v1 /= np.sqrt(v1.dot(v1))
 
-                Q_proj += np.outer(v1,v1) 
+                Q_proj += np.outer(v1,v1)
 
             # Lets pick the minimum and maximum lattice vectors
             xRmin = np.min(self.x_r_vector2, axis = 1)
             xRmax = np.max(self.x_r_vector2, axis = 1)
 
             # Now we obtain the total cell size that contains the ASR
-            N_i = xRmax - xRmin + np.ones((3,), dtype = np.intc) 
-            
+            N_i = xRmax - xRmin + np.ones((3,), dtype = np.intc)
+
             if verbose:
                 print("Supercell WS:", N_i)
 
-            N_i = np.array([2*x + 1 for x in self.supercell_size], dtype = np.intc)     
-            
+            N_i = np.array([2*x + 1 for x in self.supercell_size], dtype = np.intc)
+
             # We check if they are even, in that case we add 1
             # f(q) is real only if we sum on odd cells
             for ik in range(3):
                 if (N_i[ik] % 2 == 0):
                     N_i[ik] += 1
-            
+
             if verbose:
                 print("Supercell all odd:", N_i)
 
-            
+
             # We compute the f(q) function
             at = self.unitcell_structure.unit_cell
 
@@ -839,12 +863,12 @@ class Tensor2(GenericTensor):
 
             # Now we can impose the acustic sum rule
             final_fc -= np.einsum("ai, bi-> ab", final_fc, Q_proj) * f_q2
-            final_fc -= np.einsum("ib, ai-> ab", final_fc, Q_proj) * f_q2 
+            final_fc -= np.einsum("ib, ai-> ab", final_fc, Q_proj) * f_q2
 
 
         return final_fc
 
-    
+
 
 
     # def GenerateSupercellTensor(self, supercell):
@@ -858,7 +882,7 @@ class Tensor2(GenericTensor):
     #     This is the key to interpolate.
 
     #     The supercell atoms are defined using the generate_supercell
-    #     method from the self.structure, so that is the link 
+    #     method from the self.structure, so that is the link
     #     between indices of the returned tensor and atoms in the supercell.
 
     #     Parameters
@@ -887,17 +911,17 @@ class Tensor2(GenericTensor):
 
 
 
-    #     nat, nat_sc_old, _ = np.shape(self.r_vectors) 
-        
+    #     nat, nat_sc_old, _ = np.shape(self.r_vectors)
+
     #     for i in range(nat_sc):
-    #         i_cell = itau[i] 
+    #         i_cell = itau[i]
     #         for j in range(nat_sc):
 
     #             r_vector = super_structure.coords[i,:] - super_structure.coords[j,:]
     #             r_vector = Methods.get_closest_vector(super_structure.unit_cell, r_vector)
 
-    #             # Now average all the values that 
-    #             # share the same r vector 
+    #             # Now average all the values that
+    #             # share the same r vector
     #             #dist_v = self.r_vectors[i_cell, :,:] - np.tile(new_r_vector, (nat_sc_old, 1))
     #             #mask = [Methods.get_min_dist_into_cell(super_structure.unit_cell, dist_v[k, :], np.zeros(3)) < 1e-5 for k in range(nat_sc_old)]
     #             #mask = np.array(mask)
@@ -925,7 +949,7 @@ class Tensor2(GenericTensor):
     #                 #print("Apply element {} {} | n = {}".format(i, j, n_elements1))
     #                 tens = np.sum(self.tensor[i_cell, mask, :, :], axis = 0) / n_elements1
     #                 #print(tens)
-    #                 new_tensor[3*i: 3*i+3, 3*j:3*j+3] = tens 
+    #                 new_tensor[3*i: 3*i+3, 3*j:3*j+3] = tens
 
     #             # NOTE: Here maybe a problem arising from the
     #             # double transpose inside the same unit cell
@@ -940,12 +964,12 @@ class Tensor2(GenericTensor):
     #                     tens = np.sum(self.tensor[i_cell, mask, :, :], axis = 0) / n_elements2
     #                     new_tensor[3*j:3*j+3, 3*i:3*i+3] = tens
 
-                
+
     #             #print("Elements {}, {} | r_vector = {} | n1 = {} | n2 = {}".format(i+1, j+1, r_vector, n_elements1, n_elements2))
 
     #     return new_tensor
 
-    def GeneratePhonons(self, supercell, asr = False):
+    def GeneratePhonons(self, supercell, asr = False, lo_to_splitting = False):
         """
         GENERATE PHONONS
         ================
@@ -958,7 +982,7 @@ class Tensor2(GenericTensor):
         NOTE: The Interpolate method uses a different convension of the Fourier Transform.
         For this reason, this method returns the Complex Cojugate of the matrices interpolated at the q points.
         This has been fixed, by manually computing the complex conjugate before the return
-        
+
 
         Parameters
         ----------
@@ -967,7 +991,11 @@ class Tensor2(GenericTensor):
             - asr : bool
                 If true, the ASR is imposed during the interpolation.
                 This is the best way to correct the modes even close to gamma
-        
+            - lo_to_splitting : bool
+                If true, the phonons at gamma will have the LO-TO splitting
+                from a random direction.
+                Note, this will break symmetrization.
+
         Results
         -------
             - dynmat : Phonons.Phonons()
@@ -986,7 +1014,12 @@ class Tensor2(GenericTensor):
 
         # Interpolate over the q points
         for i, q_vector in enumerate(q_vectors):
-            dynq = self.Interpolate(-q_vector, asr = asr)
+            q_direction = None
+            if lo_to_splitting:
+                q_direction = np.random.normal(size = 3)
+                q_direction /= np.linalg.norm(q_direction)
+
+            dynq = self.Interpolate(-q_vector, asr = asr, q_direct= q_direction, lo_to_splitting=lo_to_splitting)
             dynmat.dynmats.append(dynq)
 
         # Adjust the q star according to symmetries
@@ -1011,7 +1044,7 @@ class Tensor2(GenericTensor):
             for at_1 in range(self.nat):
                 for at_2 in range(self.nat):
                     r_dist = self.r_vector2[:, i_R] + self.tau[at_2,:] - self.tau[at_1, :]
-                    
+
                     tensor = self.tensor[i_R, 3*at_1 : 3*at_1 + 3, 3*at_2: 3*at_2 + 3]
                     intensity = np.sqrt(np.trace(tensor.dot(tensor.T)))
 
@@ -1024,7 +1057,7 @@ class Tensor2(GenericTensor):
                     if len(r_total) == 0:
                         r_total.append(r_mod)
                         max_intensity.append(intensity)
-                        continue 
+                        continue
 
                     # Check if another vector with the same distance has already been found
                     distances = np.abs(r_mod - np.array(r_total))
@@ -1039,18 +1072,18 @@ class Tensor2(GenericTensor):
                         r_total.append(r_mod)
                         max_intensity.append(intensity)
 
-        
+
         r_total = np.array(r_total)
         max_intensity = np.array(max_intensity)
 
         # Return the value sorted by R distance
-        sort_mask = np.argsort(r_total) 
+        sort_mask = np.argsort(r_total)
         return r_total[sort_mask], max_intensity[sort_mask]
 
 
     # def ApplyKaiserWindow(self, rmax, beta=14, N_sampling = 1000):
     #     """
-    #     Apply a Kaiser-Bessel window to the signal. 
+    #     Apply a Kaiser-Bessel window to the signal.
     #     This is the best tool to perform the interpolation.
 
     #     Each element of the tensor is multiplied by the kaiser
@@ -1064,7 +1097,7 @@ class Tensor2(GenericTensor):
     #             All that is outside rmax is setted to 0
     #         - beta : float
     #             The shape of the Kaiser window.
-    #             For beta = 0 the window is a rectangular function, 
+    #             For beta = 0 the window is a rectangular function,
     #             for beta = 14 it resample a gaussian. The higher beta, the
     #             narrower the window.
     #         - N_sampling : int
@@ -1096,44 +1129,44 @@ class Tensor3():
 
     def __init__(self, unitcell_structure, supercell_structure, supercell_size):
         #GenericTensor.__init__(self, *args, **kwargs)
-        
+
         n_sup = np.prod(supercell_size)
         nat = unitcell_structure.N_atoms
-        
+
         nat_sc= n_sup * nat
-        
+
         self.n_sup = n_sup
         self.n_R = n_sup**2
         n_R = self.n_R
         self.nat = nat
         self.tensor = np.zeros( (n_R, 3*nat, 3*nat, 3*nat), dtype = np.double)
-        
+
         self.supercell_size = supercell_size
-        
-        
-        # Cartesian lattice vectors
+
+
+        # Cartesian lattice vectors (in Angstrom)
         self.r_vector2 = np.zeros((3, n_R), dtype = np.double, order = "F")
         self.r_vector3 = np.zeros((3, n_R), dtype = np.double, order = "F")
-        
+
         # Crystalline lattice vectors
         self.x_r_vector2 = np.zeros((3, n_R), dtype = np.intc, order = "F")
         self.x_r_vector3 = np.zeros((3, n_R), dtype = np.intc, order = "F")
-        
+
         self.itau = supercell_structure.get_itau(unitcell_structure) - 1
-        
+
         self.tau=unitcell_structure.coords
-        
-        
+
+
         self.unitcell_structure = unitcell_structure
         self.supercell_structure = supercell_structure
 
         self.verbose = True
-        
+
     def SetupFromTensor(self, tensor=None):
         """
         Setup the third order force constant form 3rd order tensor defined in the supercell
-        
-        
+
+
         Parameters
         ----------
             unitcell_structure : Structure()
@@ -1145,27 +1178,27 @@ class Tensor3():
             tensor : ndarray(size =(3*nat_sc, 3*nat_sc, 3*nat_sc, dtype = np.double)
                 The third order tensor
         """
-        
-        
+
+
         n_sup = np.prod(self.supercell_size)
         nat = self.unitcell_structure.N_atoms
-        supercell_size = self.supercell_size 
-        
-        
+        supercell_size = self.supercell_size
+
+
         nat_sc= n_sup * nat
         n_R = self.n_R
 
         supercell_structure = self.supercell_structure
         unitcell_structure = self.unitcell_structure
 
-                                           
-            
-        for index_cell2 in range(n_sup):                
+
+
+        for index_cell2 in range(n_sup):
             n_cell_x2,n_cell_y2,n_cell_z2=Methods.one_to_three_len(index_cell2,v_min=[0,0,0],
                                                                    v_len=supercell_size)
             for index_cell3 in range(n_sup):
                 n_cell_x3,n_cell_y3,n_cell_z3=Methods.one_to_three_len(index_cell3,v_min=[0,0,0],
-                                                                       v_len=supercell_size)      
+                                                                       v_len=supercell_size)
                 #
                 total_index_cell = index_cell3 + n_sup * index_cell2
                 #
@@ -1173,7 +1206,7 @@ class Tensor3():
                 self.r_vector2[:, total_index_cell] = unitcell_structure.unit_cell.T.dot(self.x_r_vector2[:,total_index_cell])
                 self.x_r_vector3[:, total_index_cell] =  n_cell_x3, n_cell_y3, n_cell_z3
                 self.r_vector3[:, total_index_cell] = unitcell_structure.unit_cell.T.dot(self.x_r_vector3[:, total_index_cell])
-                                        
+
                 for na1 in range(nat):
                     #
                     for na2 in range(nat):
@@ -1186,18 +1219,18 @@ class Tensor3():
                             na3_vect = unitcell_structure.coords[na3, :] + self.r_vector3[:, total_index_cell]
                             nat3_sc = np.argmin( [np.sum( (supercell_structure.coords[k, :] - na3_vect)**2) for k in range(nat_sc)])
                             #
-                            self.tensor[total_index_cell, 
-                                        3*na1 : 3*na1+3, 
-                                        3*na2 : 3*na2+3, 
-                                        3*na3 : 3*na3+3] = tensor[3*na1 : 3*na1 +3, 
+                            self.tensor[total_index_cell,
+                                        3*na1 : 3*na1+3,
+                                        3*na2 : 3*na2+3,
+                                        3*na3 : 3*na3+3] = tensor[3*na1 : 3*na1 +3,
                                                                 3*nat2_sc : 3*nat2_sc + 3,
                                                                 3*nat3_sc : 3*nat3_sc + 3]
 
     def SetupFromFile(self, fname,file_format='Phonopy'):
         """
         Setup the third order force constant form 3rd order tensor written in a file
-        
-        
+
+
         Parameters
         ----------
             fname : string
@@ -1206,22 +1239,22 @@ class Tensor3():
                 The format of the file
         """
         if Settings.am_i_the_master():
-            
-            if file_format == 'Phonopy':    
-                
+
+            if file_format == 'Phonopy':
+
                 print("  ")
                 print(" Reading FC3 from " + fname)
                 print(" (Phonopy format) " )
                 print("  ")
-                        
+
                 f = open(fname, "r")
                 lines = [l.strip() for l in f.readlines()]
                 f.close()
-                
+
                 n_blocks = int(lines[0])
                 self.n_R = n_blocks/self.nat**3
-                
-                
+
+
                 id_block = 0
                 total_lat_vec = 0
                 lat_vect_2 = 0
@@ -1230,23 +1263,23 @@ class Tensor3():
                 nat2 = 0
                 nat3 = 0
                 reading_lat2 = False
-                reading_lat3 = False 
+                reading_lat3 = False
                 reading_atoms = False
                 for i, line in enumerate(lines):
                     if i == 0:
                         continue
-                    
+
                     data = line.split()
                     if len(data) == 0:
                         continue
-                    
+
                     if len(data) == 1:
                         id_block = int(data[0]) - 1
                         total_lat_vec = id_block // self.nat**3
                         nat_id = id_block % self.nat**3
                         reading_lat2 = True
                         continue
-                    
+
                     if reading_lat2:
                         self.r_vector2[:, total_lat_vec] = [float(x) for x in data]
                         self.x_r_vector2[:, total_lat_vec] = Methods.covariant_coordinates(self.unitcell_structure.unit_cell, self.r_vector2[:, total_lat_vec])
@@ -1261,31 +1294,31 @@ class Tensor3():
                         nat1, nat2, nat3 = [int(x) - 1 for x in data]
                         reading_atoms = False
                         print("Reading the vectors: ", self.r_vector2[:, total_lat_vec], self.r_vector3[:, total_lat_vec], total_lat_vec)
-                    
+
                     if len(data) == 4:
                         xx, yy, zz = [int(x)-1 for x in data[:3]]
-                        
-                        self.tensor[total_lat_vec, 3*nat1+xx, 3*nat2+yy, 3*nat3+zz] = np.double(data[-1])     
-        
-            elif file_format == 'D3Q': 
-                
+
+                        self.tensor[total_lat_vec, 3*nat1+xx, 3*nat2+yy, 3*nat3+zz] = np.double(data[-1])
+
+            elif file_format == 'D3Q':
+
                 print("  ")
                 print(" Reading FC3 from "+ fname )
-                print(" (D3Q format) " )            
-                print("  ")            
-                
+                print(" (D3Q format) " )
+                print("  ")
+
                 first_nR_read = True
                 with open(fname, "r") as f:
                 # ============ Skip the header, if present ====================
                     if len(f.readline().split()) ==6:
                         f.seek(0)
-                    else:    
+                    else:
                         f.seek(0)
                         while True:
                             if len(f.readline().split()) ==1:
                                 break
                         f.readline()
-                # =============================================================                    
+                # =============================================================
                     for nat1 in range(self.nat):
                         for nat2 in range(self.nat):
                             for nat3 in range(self.nat):
@@ -1293,14 +1326,14 @@ class Tensor3():
                                     for beta in range(3):
                                         for gamma in range(3):
                                             [alpha_read,beta_read,
-                                            gamma_read,nat1_read, 
+                                            gamma_read,nat1_read,
                                             nat2_read, nat3_read]=[int(l)-1 for l in f.readline().split()]
-                                            
+
                                             assert ([nat1,nat2,nat3,alpha,beta,gamma]==[nat1_read,nat2_read,nat3_read,
                                                                                         alpha_read,beta_read,gamma_read])
-                                        
+
                                             nR_read=int(f.readline().split()[0])
-                                            
+
                                             if (first_nR_read) :
                                                 self.n_R=nR_read
                                                 self.tensor=np.zeros((self.n_R,3*self.nat,3*self.nat,3*self.nat),dtype=np.float64)
@@ -1309,33 +1342,33 @@ class Tensor3():
                                                 first_nR_read = False
                                             else :
                                                 assert ( nR_read == self.n_R ), " Format unknown - different blocks size "
-                                    
+
                                             for iR in range(self.n_R):
-                                                    
-                                                    res=[l for l in f.readline().split()] 
-                                                    
+
+                                                    res=[l for l in f.readline().split()]
+
                                                     [self.x_r_vector2[0, iR],
                                                     self.x_r_vector2[1, iR],
                                                     self.x_r_vector2[2, iR],
                                                     self.x_r_vector3[0, iR],
                                                     self.x_r_vector3[1, iR],
-                                                    self.x_r_vector3[2, iR]]=[int(l) for l in res[:6]] 
-                                                    
+                                                    self.x_r_vector3[2, iR]]=[int(l) for l in res[:6]]
+
                                                     self.tensor[iR, 3*nat1 + alpha, 3*nat2 + beta, 3*nat3 + gamma]=np.double(res[6])
-                                                    
+
                     self.r_vector2=self.unitcell_structure.unit_cell.T.dot(self.x_r_vector2)
-                    self.r_vector3=self.unitcell_structure.unit_cell.T.dot(self.x_r_vector3)    
-                    
-        # Broadcast            
-                    
+                    self.r_vector3=self.unitcell_structure.unit_cell.T.dot(self.x_r_vector3)
+
+        # Broadcast
+
         self.tensor = Settings.broadcast(self.tensor, enforce_double=True)
         self.x_r_vector2 = Settings.broadcast(self.x_r_vector2)
         self.x_r_vector3 = Settings.broadcast(self.x_r_vector3)
         self.r_vector2 = Settings.broadcast(self.r_vector2, enforce_double=True)
         self.r_vector3 = Settings.broadcast(self.r_vector3, enforce_double=True)
-        self.n_R = Settings.broadcast(self.n_R)                    
-                    
-                    
+        self.n_R = Settings.broadcast(self.n_R)
+
+
     def WriteOnFile(self,fname,file_format='Phonopy'):
         """
         WRITE ON FILE
@@ -1343,7 +1376,16 @@ class Tensor3():
 
         Save the tensor on a file.
 
-        The file format is the same as phono3py or D3Q       
+        The file format is the same as phono3py or D3Q.
+        The unit of measures are those in which the tensor is stored.
+        If readed from the result of get_free_energy_hessian, they are in Ry/Bohr^3.
+
+        To convert the units to eV/A^3 (used in phono3py, for example), you need to change them as:
+        >>> my_tensor3.tensor *= CC.Units.RY_TO_EV / CC.Units.BOHR_TO_ANGSTROM**3
+        >>> my_tensor3.WriteOnFile("FORCE_CONSTANTS_3RD", file_format="phonopy")
+
+        However, remember to change back in Ry/Bohr^3 if you want to further process this tensor within Cellconstructor
+        (For example to compute )
 
         Parameters
         ----------
@@ -1352,29 +1394,30 @@ class Tensor3():
             file_format: string
                 It could be either 'phonopy' or 'd3q' (not case sensitive)
                 'd3q' is the file format used in the thermal.x espresso package, while phonopy is the one
-                used in phono3py. 
+                used in phono3py.
         """
-        
+
         if file_format.lower() == 'phonopy':
-            
+
             print("  ")
             print(" Writing FC3 on "+ fname)
             print(" (Phonopy format) " )
             print("  ")
-            
+
             with open(fname, "w") as f:
-            
+
                 f.write("{:>5}\n".format(self.n_R * self.nat**3))
-                
-            
+
+
                 i_block = 1
                 for r_block  in range(self.n_R):
                     for nat1 in range(self.nat):
                         for nat2 in range(self.nat):
                             for nat3 in range(self.nat):
+                                f.write("\n")
                                 f.write("{:d}\n".format(i_block))
-                                f.write("{:16.8e} {:16.8e} {:16.8e}\n".format(*list(self.r_vector2[:, r_block])))
-                                f.write("{:16.8e} {:16.8e} {:16.8e}\n".format(*list(self.r_vector3[:, r_block])))
+                                f.write("{:16.8f} {:16.8f} {:16.8f}\n".format(*list(self.r_vector2[:, r_block])))
+                                f.write("{:16.8f} {:16.8f} {:16.8f}\n".format(*list(self.r_vector3[:, r_block])))
                                 f.write("{:>6d} {:>6d} {:>6d}\n".format(nat1+1, nat2+1, nat3+1))
                                 i_block += 1
                                 #
@@ -1382,16 +1425,16 @@ class Tensor3():
                                     z = xyz % 3
                                     y = (xyz %9)//3
                                     x = xyz // 9
-                                    f.write("{:>2d} {:>2d} {:>2d} {:>20.10e}\n".format(x+1,y+1,z+1, self.tensor[r_block, 3*nat1 + x, 3*nat2 + y, 3*nat3 + z]))            
-        
-        
+                                    f.write("{:>2d} {:>2d} {:>2d} {:>20.10f}\n".format(x+1,y+1,z+1, self.tensor[r_block, 3*nat1 + x, 3*nat2 + y, 3*nat3 + z]))
+
+
         elif file_format.upper() == 'D3Q':
-            
+
             print("  ")
             print(" Writing FC3 on "+ fname)
             print(" (D3Q format) " )
-            print("  ")      
-            
+            print("  ")
+
             with open(fname, "w") as f:
                 #TODD Print header...
 
@@ -1405,17 +1448,17 @@ class Tensor3():
                                         f.write("{:>5}\n".format(self.n_R))
                                         for r_block  in range(self.n_R):
                                             f.write("{:>6d} {:>6d} {:>6d} {:>6d} {:>6d} {:>6d} {:16.8e}\n".format(self.x_r_vector2[0, r_block],self.x_r_vector2[1, r_block],self.x_r_vector2[2, r_block],self.x_r_vector3[0, r_block],self.x_r_vector3[1, r_block],self.x_r_vector3[2, r_block], self.tensor[r_block, 3*nat1 + alpha, 3*nat2 + beta, 3*nat3 + gamma]))
-                                            
 
-    def Center(self, nneigh=None, Far=1,tol=1.0e-5):
+
+    def Center(self, nneigh=None, Far=2,tol=1.0e-5):
         """
-        CENTERING 
+        CENTERING
         =========
 
         This subroutine will center the third order force constant.
-        This means that for each atomic indices in the tensor, it will be identified by the lowest 
-        perimeter between the replica of the atoms. Moreover, in case of existance of other elements 
-        not included in the original supercell with the same perimeter, the tensor will be equally subdivided between equivalent triplets of atoms. 
+        This means that for each atomic indices in the tensor, it will be identified by the lowest
+        perimeter between the replica of the atoms. Moreover, in case of existance of other elements
+        not included in the original supercell with the same perimeter, the tensor will be equally subdivided between equivalent triplets of atoms.
 
         This function should be called before performing the Fourier interpolation.
 
@@ -1425,100 +1468,100 @@ class Tensor3():
             - nneigh [default= None]: integer
                 if different from None, it sets a maximum distance allowed to consider
                 equivalent atoms in the centering.
-                
-                nneigh > 0
-                
-                    for each atom the maximum distance is: 
-                    the average between the nneigh-th and the nneigh+1-th neighbor distance 
-                    (if, for the considered atom, the supercell is big enough to find up to 
-                    the nneigh+1-th neighbor distance, otherwise it is the maxmimum distance +10%)
-                
-                nneigh = 0
-                
-                    the maximum distance is the same for all the atoms, equal to 
-                    maximum of the minimum distance between equivalent atoms (+ 10%) 
-                
-                nneigh < 0
-                
-                    the maximum distance is the same for all the atoms, equal to 
-                    maximum of the |nneigh|-th neighbor distances found for all the atoms                 
-                    (if, for the considered atom, the supercell is big enough to find up to 
-                    the |nneigh|+1-th neighbor distance, otherwise it is the maxmimum distance +10%)  
-                    
-            - Far [default= 1]: integer
-            
-                    In the centering, supercell equivalent atoms are considered within 
-                    -Far,+Far multiples of the super-lattice vectors
-        """    
 
-        
-        
-        
+                nneigh > 0
+
+                    for each atom the maximum distance is:
+                    the average between the nneigh-th and the nneigh+1-th neighbor distance
+                    (if, for the considered atom, the supercell is big enough to find up to
+                    the nneigh+1-th neighbor distance, otherwise it is the maxmimum distance +10%)
+
+                nneigh = 0
+
+                    the maximum distance is the same for all the atoms, equal to
+                    maximum of the minimum distance between equivalent atoms (+ 10%)
+
+                nneigh < 0
+
+                    the maximum distance is the same for all the atoms, equal to
+                    maximum of the |nneigh|-th neighbor distances found for all the atoms
+                    (if, for the considered atom, the supercell is big enough to find up to
+                    the |nneigh|+1-th neighbor distance, otherwise it is the maxmimum distance +10%)
+
+            - Far [default= 1]: integer
+
+                    In the centering, supercell equivalent atoms are considered within
+                    -Far,+Far multiples of the super-lattice vectors
+        """
+
+
+
+
         if Settings.am_i_the_master():
-            
-            
+
+
             t1 = time.time()
-        
+
             if self.verbose:
                 print(" ")
                 print(" ======================= Centering 3rd FCs ==========================")
-                print(" ")         
+                print(" ")
 
             # The supercell total size
             #
             nq0=self.supercell_size[0]
             nq1=self.supercell_size[1]
             nq2=self.supercell_size[2]
-            
+
             # by default no maximum distances
             dist_range=np.ones((self.nat))*np.infty
             #
             if nneigh!=None:
             # =======================================================================
-                uc_struc = self.unitcell_structure        
-                sc_struc = self.supercell_structure 
+                uc_struc = self.unitcell_structure
+                sc_struc = self.supercell_structure
 
                 # lattice vectors in Angstrom in columns
                 uc_lat = uc_struc.unit_cell.T
                 sc_lat = sc_struc.unit_cell.T
 
                 # atomic positions in Angstrom in columns
-                uc_tau = uc_struc.coords.T 
+                uc_tau = uc_struc.coords.T
                 sc_tau = sc_struc.coords.T
-                
+
                 uc_nat = uc_tau.shape[1]
                 sc_nat = sc_tau.shape[1]
-                
+
                 # == calc dmin ==================================================
                 # calculate the distances between the atoms in the supercell replicas
-                
+
                 # array square distances between i-th and the j-th
-                # equivalent atoms of the supercell 
+                # equivalent atoms of the supercell
                 d2s=np.empty((   (2*Far+1)**3 , sc_nat, sc_nat   ))
-                
+
                 rvec_i=sc_tau
                 for j, (Ls,Lt,Lu) in enumerate(
                     itertools.product(range(-Far,Far+1),range(-Far,Far+1),range(-Far,Far+1))):
-                    
-                    rvec_j = sc_tau+np.dot(sc_lat,np.array([[Ls,Lt,Lu]]).T) 
-                    
+
+                    rvec_j = sc_tau+np.dot(sc_lat,np.array([[Ls,Lt,Lu]]).T)
+
                     d2s[j,:,:]=scipy.spatial.distance.cdist(rvec_i.T,rvec_j.T,"sqeuclidean")
-                
+
                 # minimum of the square distances
                 d2min=d2s.min(axis=0)
                 # minimum distance between two atoms in the supercell,
                 # considering also equivalent supercell images
-                dmin=np.sqrt(d2min) 
+                dmin=np.sqrt(d2min)
                 #
                 if nneigh == 0:
-                    dist_range=np.ones((self.nat))*np.amax(dmin)*1.1                                          
+                    dist_range=np.ones((self.nat))*np.amax(dmin)*1.1
                     if self.verbose:
                         print(" ")
                         print(" Maximum distance allowed set equal to ")
                         print(" the max of the minimum distances between ")
                         print(" supercell equivalent atoms (+10%): {:8.5f} A".format(dist_range[0]))
-                        print(" ")                    
-                    
+                        print(" ")
+
                     # to include all the equivalent atoms having the smallest distance
                     # between them. It does not correspond to taking dist_range=+infity
                     # because, with the centering, smallest triangles with equivalent points can be obtained
@@ -1526,9 +1569,9 @@ class Tensor3():
                     # with dist_range=+infity these triangles are included, with dist_range=np.amax(dmin)
                     # they are not included (here I add the 10%)
 
-                else:                
-                    #== max dist of the n-th neighbors ============================                
-                    # For all the uc_nat atoms of unit cell (due to the lattice translation symmetry, 
+                else:
+                    #== max dist of the n-th neighbors ============================
+                    # For all the uc_nat atoms of unit cell (due to the lattice translation symmetry,
                     # I can limit the analysis to the atoms of a unit cell - not the supercell)
                     # I look for the nneigh-th neighbor distance and build the array dist_range
                     #
@@ -1537,16 +1580,16 @@ class Tensor3():
                     for i in range(uc_nat):     # for each unit cell atom
                         ds=dmin[i,:].tolist()   # list of distances from other atoms
                         ds.sort()               # list of distances from the i-th atom in increasing order
-                        u=[]                    # same list, without repetitions 
+                        u=[]                    # same list, without repetitions
                         for j in ds:
                             for k in u:
                                 if np.allclose(k,j):
                                     break
                             else:
                                 u.append(j)
-                        # the list u of increasing distances for i-th atom has been completed  
+                        # the list u of increasing distances for i-th atom has been completed
                         # try do consider the average of the nneigh-th and nneigh+1-th distance to nth_len
-                        # if it fails, because there are not enough atoms to reach the n-th neighbors, 
+                        # if it fails, because there are not enough atoms to reach the n-th neighbors,
                         # then consider the maximum distance found (augmented of 10%)
                         try:
                             dist_range[i]=(.5*(u[nn]+u[nn+1]))
@@ -1557,46 +1600,46 @@ class Tensor3():
                             dist_range[i]=1.1*max(u)
                     #
                     if nneigh < 0 :
-                        # 
+                        #
                         dist_range=np.ones((self.nat))*np.amax(dist_range)
                         if self.verbose:
                             print(" ")
-                            print(" Maximum distance allowed set equal to {:8.5f} A".format(dist_range[0])) 
-                            print(" ")                                                                    
+                            print(" Maximum distance allowed set equal to {:8.5f} A".format(dist_range[0]))
+                            print(" ")
                         #
-                    else :    
+                    else :
                         if self.verbose:
                             print(" ")
-                            print(" Maximum distance allowed set equal to:".format(dist_range[0])) 
+                            print(" Maximum distance allowed set equal to:".format(dist_range[0]))
                             print(" ")
                             for i in range(self.nat):
-                                print("{:8.5f} A for atom {}".format(dist_range[i],i+1))                                
-                            print(" ")                                                                    
+                                print("{:8.5f} A for atom {}".format(dist_range[i],i+1))
+                            print(" ")
                         #
-            #==============================================================        
-            # look for the minimum supercell 
+            #==============================================================
+            # look for the minimum supercell
             #
-            xRmin=np.min(self.x_r_vector3,1) 
-            xRmax=np.max(self.x_r_vector3,1) 
+            xRmin=np.min(self.x_r_vector3,1)
+            xRmax=np.max(self.x_r_vector3,1)
             xRlen=xRmax-xRmin+np.ones((3,),dtype=int)
-                               
+
             tensor= np.transpose(self.tensor,axes=[1,2,3,0])
             self.n_sup = np.prod(xRlen)
 
-            # to the Fortran routine the xR3 (faster than xR2) goes on the rightmost place 
+            # to the Fortran routine the xR3 (faster than xR2) goes on the rightmost place
             # which is the place after the reshape in python
 
             alat=self.unitcell_structure.unit_cell
-            
+
             weight,xR2,xR3 =thirdorder.third_order_centering.analysis(Far,tol,dist_range,xRlen,
                                                                       self.x_r_vector2,self.x_r_vector3,
                                                                       alat,
-                                                                      self.tau, tensor,self.nat,self.n_R)  
-            
-            
-            mask= weight >0 
+                                                                      self.tau, tensor,self.nat,self.n_R)
+
+
+            mask= weight >0
             mask=np.repeat(mask[np.newaxis,...], (2*Far+1)*(2*Far+1)*(2*Far+1), axis=0)
-            
+
             xR2_reshaped=xR2[:,mask]
             xR3_reshaped=xR3[:,mask]
             xR23 = np.unique(np.vstack((xR2_reshaped,xR3_reshaped)),axis=1)
@@ -1606,18 +1649,18 @@ class Tensor3():
             self.x_r_vector2,self.x_r_vector3 = np.vsplit(xR23,2)
             self.r_vector2=self.unitcell_structure.unit_cell.T.dot(self.x_r_vector2)
             self.r_vector3=self.unitcell_structure.unit_cell.T.dot(self.x_r_vector3)
-    
+
             centered=thirdorder.third_order_centering.center(tensor,weight,
                                                              self.x_r_vector2,xR2,
                                                              self.x_r_vector3,xR3,
                                                              Far,self.nat,
                                                              self.n_R,nblocks_old)
-            t2 = time.time() 
-            
+            t2 = time.time()
+
             self.tensor = np.transpose(centered, axes=[3,0,1,2])
-          
-            if self.verbose:               
-                print(" Time elapsed for computing the centering: {} s".format( t2 - t1)) 
+
+            if self.verbose:
+                print(" Time elapsed for computing the centering: {} s".format( t2 - t1))
                 print(" Memory required for the centered tensor: {} Gb".format(centered.nbytes / 1024.**3))
                 print(" ")
                 print(" ====================================================================")
@@ -1633,59 +1676,59 @@ class Tensor3():
 
     def Apply_ASR(self,PBC=False,power=0,maxiter=1000,threshold=1.0e-12):
         """
-        Apply_ASR 
+        Apply_ASR
         =========
 
         This subroutine apply the ASR to the third order force constants iteratively.
-        For each iteration, the ASR is imposed on the third index 
-        (any of the three indeces would be equivalent, apart from the subtleties that 
+        For each iteration, the ASR is imposed on the third index
+        (any of the three indeces would be equivalent, apart from the subtleties that
         would require the implementation for the first index, due to the representation chosen),
         and, subsequently, the symmetry by permutation of the three indeces is imposed.
-        
+
 
         Optional Parameters
         --------------------
             - PBC [default=False]: logical
-            
+
                 If True, periodic boundary conditions are considered. This is necessary, for example,
                 to apply this routine to non-centered tensors.
-            
+
             - power [default=0]: float >= 0
-            
-                The way the ASR is imposed on the third index:                
+
+                The way the ASR is imposed on the third index:
                 phi(i,j,k,abc)=phi(i,j,k,a,b,c)-[\sum_c phi(i,j,k,a,b,c)]* |phi(i,j,k,a,b,c)|^pow / [sum_c |phi(i,j,k,a,b,c)|^pow]
-            
+
             - maxiter [default= 1000]: integer >= 0
 
-                n>0   Maximum number of iteration to reach the convergence. 
+                n>0   Maximum number of iteration to reach the convergence.
                 n=0   Endless iteration
-                
-                If a file STOP is found, the iteration stops.
-                
-            - threshold [default= 1.0e-12]: float > 0                
- 
-               Threshold for the convergence. The convergence is on two values: the value of sum on the third index and the 
-               variation of the phi after the imposition of the permutation symmetry (both divided by sum |phi|)
-        """    
 
-        
+                If a file STOP is found, the iteration stops.
+
+            - threshold [default= 1.0e-12]: float > 0
+
+               Threshold for the convergence. The convergence is on two values: the value of sum on the third index and the
+               variation of the phi after the imposition of the permutation symmetry (both divided by sum |phi|)
+        """
+
+
         if Settings.am_i_the_master():
-        
-        
+
+
             t1 = time.time()
-           
+
             if self.verbose:
                 print(" ")
                 print(" =======================    ASR    ========================== ")
-                print(" ")         
+                print(" ")
 
 
             xR23 = np.vstack((self.x_r_vector2,self.x_r_vector3))
             xR2list=np.unique(self.x_r_vector2,axis=1)
             totnum_R2=xR2list.shape[1]
-        
-            xRmin=np.min(self.x_r_vector3,1) 
-            xRmax=np.max(self.x_r_vector3,1) 
+
+            xRmin=np.min(self.x_r_vector3,1)
+            xRmax=np.max(self.x_r_vector3,1)
             SClat=xRmax-xRmin+np.ones((3,),dtype=int)
 
 
@@ -1697,14 +1740,14 @@ class Tensor3():
                                                              PBC,threshold,
                                                              maxiter,self.verbose,
                                                              totnum_R2,self.nat,self.n_R)
-        
-            self.tensor=np.transpose(tensor_out,axes=[3,0,1,2]) 
 
-            t2 = time.time() 
+            self.tensor=np.transpose(tensor_out,axes=[3,0,1,2])
 
-            if self.verbose: 
+            t2 = time.time()
+
+            if self.verbose:
                 print(" ")
-                print(" Time elapsed for imposing ASR: {} s".format( t2 - t1)) 
+                print(" Time elapsed for imposing ASR: {} s".format( t2 - t1))
                 print(" ")
                 print(" ============================================================ ")
 
@@ -1715,12 +1758,12 @@ class Tensor3():
 
 
 #============================================================================================================
-        
- 
+
+
     def Interpolate(self, q2, q3, asr = True, verbose = False):
         """
         Interpolate the third order to the q2 and q3 points
-        
+
         Parameters
         ----------
             q2, q3 : ndarray(3)
@@ -1729,19 +1772,19 @@ class Tensor3():
                 If true, the Acoustic sum rule is applied directly in q space
             verbose : bool
                 If true print debugging info
-        
+
         Results
         -------
             Phi3 : ndarray(size = (3*nat, 3*nat, 3*nat))
                 The third order force constant in the defined q points.
                 atomic indices runs over the unit cell
         """
-        
-        final_fc = np.zeros((3*self.nat, 3*self.nat, 3*self.nat), 
+
+        final_fc = np.zeros((3*self.nat, 3*self.nat, 3*self.nat),
                             dtype = np.complex128)
         for i in range(self.n_R):
-            arg = 2  * np.pi * (q2.dot(self.r_vector2[:, i]) + 
-                                q3.dot(self.r_vector3[:, i]))            
+            arg = 2  * np.pi * (q2.dot(self.r_vector2[:, i]) +
+                                q3.dot(self.r_vector3[:, i]))
             phase =  np.exp(np.complex128(-1j) * arg)
             final_fc += phase * self.tensor[i, :, :, :]
 
@@ -1758,13 +1801,13 @@ class Tensor3():
                 v1 = np.zeros(nat*3, dtype = np.double)
                 v1[3*np.arange(nat) + i] = 1
                 v1 /= np.sqrt(v1.dot(v1))
-                
+
                 Q_proj += np.outer(v1, v1)
-            
+
             # Get the N_i in the centered cell
             # First we get the list of vectors in crystal coordinates
             xR_list=np.unique(self.x_r_vector3, axis = 1)
-          
+
             # We pick the minimum and maximum values of the lattice vectors
             # in crystal coordinates
             xRmin=np.min(xR_list, axis = 1)
@@ -1781,11 +1824,11 @@ class Tensor3():
             for ik in range(3):
                 if (N_i[ik] % 2 == 0):
                     N_i[ik] += 1
-            
+
             if verbose:
                 print("Supercell all odd:", N_i)
 
-            
+
             # We compute the f(q) function
             at = self.unitcell_structure.unit_cell
 
@@ -1797,7 +1840,7 @@ class Tensor3():
             # We use mask to avoid division by 0,
             # As we know that the 0/0 limit is 1 in this case
 
-            mask3 = np.abs(np.sin(at.dot(q3) * np.pi)) > __tol__ 
+            mask3 = np.abs(np.sin(at.dot(q3) * np.pi)) > __tol__
             f_q3i[mask3] = np.sin(N_i[mask3] * at[mask3,:].dot(q3) * np.pi) / (N_i[mask3] * np.sin(at[mask3,:].dot(q3) * np.pi))
             f_q3 = np.prod(f_q3i)
 
@@ -1818,13 +1861,13 @@ class Tensor3():
                 print("q3 = ", Methods.covariant_coordinates(bg * 2 * np.pi, q3))
 
             # Now we can impose the acustic sum rule
-            final_fc -= np.einsum("abi, ci-> abc", final_fc, Q_proj) * f_q3 
+            final_fc -= np.einsum("abi, ci-> abc", final_fc, Q_proj) * f_q3
             final_fc -= np.einsum("aic, bi-> abc", final_fc, Q_proj) * f_q2
-            final_fc -= np.einsum("ibc, ai-> abc", final_fc, Q_proj) * f_q1 
+            final_fc -= np.einsum("ibc, ai-> abc", final_fc, Q_proj) * f_q1
 
 
 
-        
+
         return final_fc
 
 
@@ -1854,115 +1897,115 @@ class Tensor3():
 
 
 
-# ============================================================================================================================================ 
-# Tentative Sparse  ========================================================================================================================== 
-# ============================================================================================================================================   
- 
- 
+# ============================================================================================================================================
+# Tentative Sparse  ==========================================================================================================================
+# ============================================================================================================================================
 
- 
+
+
+
     def WriteOnFile_sparse(self, filename):
         """
         """
-        
-    
+
+
         with open(filename, "w") as f:
             #TODD Print header...
             f.write("{:>5}\n".format(self.n_R_sparse))
-            
-        
+
+
             for i_block  in range(self.n_R_sparse):
                             f.write("{:d}\n".format(i_block+1))
                             f.write("{:16.8e} {:16.8e} {:16.8e}\n".format(*list(self.r_vector2_sparse[:, i_block])))
                             f.write("{:16.8e} {:16.8e} {:16.8e}\n".format(*list(self.r_vector3_sparse[:, i_block])))
-                                                        
-                            nat=self.atom_sparse[:,i_block]                            
+
+                            nat=self.atom_sparse[:,i_block]
                             f.write("{:>6d} {:>6d} {:>6d}\n".format(nat[0]+1,nat[1]+1,nat[2]+1))
-                        
+
                             #
                             for xyz in range(27):
                                 z = xyz % 3
                                 y = (xyz %9)//3
                                 x = xyz // 9
                                 f.write("{:>2d} {:>2d} {:>2d} {:>20.10e}\n".format(x+1,y+1,z+1, self.tensor[self.r_blocks_sparse_list[i_block], 3*nat[0] + x, 3*nat[1] + y, 3*nat[2] + z]))
-       
+
     def Center_sparse(self, Far=1,tol=1.0e-5):
         """
-        CENTERING 
+        CENTERING
         =========
 
         This subrouine will center the third order force constant inside the Wigner-Seitz supercell.
-        This means that for each atomic indices in the tensor, it will be identified by the lowest 
+        This means that for each atomic indices in the tensor, it will be identified by the lowest
         perimiter between the replica of the atoms.
         Moreover, in case of existance of other elements not included in the original supercell with
-        the same perimeter, the tensor will be equally subdivided between equivalent triplets of atoms. 
+        the same perimeter, the tensor will be equally subdivided between equivalent triplets of atoms.
 
         This function should be called before performing the Fourier interpolation.
-        """    
+        """
 
         t1 = time.time()
-        
-        
+
+
         if Settings.am_i_the_master():
-        
+
             if self.verbose:
                 print(" ")
                 print(" ======================= Centering ==========================")
-                print(" ")         
+                print(" ")
 
             # The supercell total size
             #
             nq0=self.supercell_size[0]
             nq1=self.supercell_size[1]
             nq2=self.supercell_size[2]
-            
+
             n_sup = np.prod(self.supercell_size)
-            tensor_reshaped = np.transpose(self.tensor.reshape((n_sup, n_sup, 
+            tensor_reshaped = np.transpose(self.tensor.reshape((n_sup, n_sup,
                                                                 3*self.nat, 3*self.nat, 3*self.nat)),axes=[2,3,4,0,1])
             alat=self.unitcell_structure.unit_cell
-            
+
             weight,xR2,xR3 =thirdorder.third_order_centering.analysis(Far,
-                                        nq0,nq1,nq2,tol, 
-                                        self.unitcell_structure.unit_cell, self.tau, tensor_reshaped,self.nat)  
-            
-            
+                                        nq0,nq1,nq2,tol,
+                                        self.unitcell_structure.unit_cell, self.tau, tensor_reshaped,self.nat)
+
+
             xR2_reshaped=np.reshape(xR2,(3,(2*Far+1)*(2*Far+1)*(2*Far+1)*n_sup*self.nat*self.nat*self.nat*n_sup*n_sup))
             xR3_reshaped=np.reshape(xR3,(3,(2*Far+1)*(2*Far+1)*(2*Far+1)*n_sup*self.nat*self.nat*self.nat*n_sup*n_sup))
             xR23 = np.unique(np.vstack((xR2_reshaped,xR3_reshaped)),axis=1)
-            
+
             self.n_R=xR23.shape[1]
             self.x_r_vector2,self.x_r_vector3 = np.vsplit(xR23,2)
             self.r_vector2=self.unitcell_structure.unit_cell.T.dot(self.x_r_vector2)
             self.r_vector3=self.unitcell_structure.unit_cell.T.dot(self.x_r_vector3)
-    
+
             centered,self.n_R_sparse,x_r_vector2_sparse,x_r_vector3_sparse,atom_sparse,r_blocks_sparse_list=thirdorder.third_order_centering.center_sparse(tensor_reshaped,weight,
                                 self.x_r_vector2,xR2,self.x_r_vector3,xR3,
                                 Far,self.nat,n_sup,self.n_R)
-            
 
-             
-            self.x_r_vector2_sparse=x_r_vector2_sparse[:,0:self.n_R_sparse] 
-            self.x_r_vector3_sparse=x_r_vector3_sparse[:,0:self.n_R_sparse]            
-            self.atom_sparse=atom_sparse[:,0:self.n_R_sparse]         
-            self.r_blocks_sparse_list=r_blocks_sparse_list[0:self.n_R_sparse]             
+
+
+            self.x_r_vector2_sparse=x_r_vector2_sparse[:,0:self.n_R_sparse]
+            self.x_r_vector3_sparse=x_r_vector3_sparse[:,0:self.n_R_sparse]
+            self.atom_sparse=atom_sparse[:,0:self.n_R_sparse]
+            self.r_blocks_sparse_list=r_blocks_sparse_list[0:self.n_R_sparse]
             self.r_vector2_sparse=self.unitcell_structure.unit_cell.T.dot(self.x_r_vector2_sparse)
             self.r_vector3_sparse=self.unitcell_structure.unit_cell.T.dot(self.x_r_vector3_sparse)
-            
-            t2 = time.time() 
-            
+
+            t2 = time.time()
+
             self.tensor = np.transpose(centered, axes=[3,0,1,2])
-            
-            
-            if self.verbose:               
-                print("Time elapsed for computing the centering: {} s".format( t2 - t1)) 
+
+
+            if self.verbose:
+                print("Time elapsed for computing the centering: {} s".format( t2 - t1))
                 #print("Memory required for the not centered tensor {} Gb".format(self.tensor.nbytes / 1024.**3))
                 print("Memory required for the centered tensor: {} Gb".format(centered.nbytes / 1024.**3))
                 #print("Memory required after removing zero elements: {} Gb".format(self.tensor.nbytes / 1024.**3))
                 print(" ")
                 print(" ============================================================")
 
-           
-        
+
+
         self.tensor = Settings.broadcast(self.tensor, enforce_double=True)
         self.x_r_vector2 = Settings.broadcast(self.x_r_vector2)
         self.x_r_vector3 = Settings.broadcast(self.x_r_vector3)
@@ -1977,59 +2020,59 @@ class Tensor3():
         self.r_vector3_sparse = Settings.broadcast(self.r_vector3_sparse, enforce_double=True)
         self.n_R_sparse = Settings.broadcast(self.n_R_sparse)
         self.atom_sparse = Settings.broadcast(self.atom_sparse)
-        self.r_blocks_sparse_list = Settings.broadcast(self.r_blocks_sparse_list)    
-    
-    
-    
-    
-    
-    
-    
-# ============================================================================================================================================ 
-# Slower/To check/Old  ======================================================================================================================= 
-# ============================================================================================================================================  
+        self.r_blocks_sparse_list = Settings.broadcast(self.r_blocks_sparse_list)
+
+
+
+
+
+
+
+# ============================================================================================================================================
+# Slower/To check/Old  =======================================================================================================================
+# ============================================================================================================================================
 
 
     def ApplySumRule_old(self) :
-        
+
         t1 = time.time()
-        
+
         if Settings.am_i_the_master():
-        
+
             if self.verbose:
                 print(" ")
                 print(" ======================= Imposing ASR ==========================")
-                print(" ")         
-            
+                print(" ")
 
-            
+
+
             #tensor_new = np.transpose(self.tensor.reshape((n_sup_WS, n_sup_WS, 3*self.nat, 3*self.nat, 3*self.nat)),axes=[2,3,4,0,1])
-            
-           
-        
-            
+
+
+
+
             #xR2_list, xR2_block_index, xR2_num_tot=np.unique(self.x_r_vector2, axis = 1, return_index = True, return_counts=True )
-            #xR3_list, xR3_block_index, xR3_num_tot=np.unique(self.x_r_vector3, axis = 1, return_index = True, return_counts=True )            
-            
+            #xR3_list, xR3_block_index, xR3_num_tot=np.unique(self.x_r_vector3, axis = 1, return_index = True, return_counts=True )
+
             xR_list=np.unique(self.x_r_vector3, axis = 1)
             totnum_R=xR_list.shape[1]
-          
+
             xRdiff_list=np.unique(self.x_r_vector2-self.x_r_vector3, axis = 1)
             totnum_Rdiff=xRdiff_list.shape[1]
 
 
-            #xRmin=np.min(xR_list,1) 
-            #xRmax=np.max(xR_list,1) 
+            #xRmin=np.min(xR_list,1)
+            #xRmax=np.max(xR_list,1)
             #xRlen=xRmax-xRmin+np.ones((3,),dtype=int)
             #n_sup=np.prod(xRlen)**2
 
-            
+
             #xR2_block_index=[  xR2_num_tot[i]  for i in xR3_block_index ]
-            
+
             #print(np.sum(xR2_list-xR3_list))
-            #print(np.sum(xR2_block_index-xR3_block_index))            
+            #print(np.sum(xR2_block_index-xR3_block_index))
             #print(np.sum(xR2_num_tot-xR3_num_tot))
-                       
+
             tensor_new = np.transpose(self.tensor,axes=[3,2,1,0])
             phi_asr=thirdorder.third_order_asr.impose_asr(tensor_new,xR_list,xRdiff_list,self.x_r_vector2,self.x_r_vector3,totnum_Rdiff,self.n_R,totnum_R,self.nat)
 
@@ -2038,100 +2081,100 @@ class Tensor3():
                                                           #totnum_Rdiff,
                                                           #self.n_R,totnum_R,self.nat)
 
-                
-                
-          
-            self.tensor=np.transpose(phi_asr, axes=[3,2,1,0])  
 
 
-            ## DEBUG        
-            #tensor_block_nonzero = np.sum(self.tensor**2, axis = (1,2,3)) > 1e-8        
-            #nn_R = np.sum(tensor_block_nonzero.astype(int))                    
+
+            self.tensor=np.transpose(phi_asr, axes=[3,2,1,0])
+
+
+            ## DEBUG
+            #tensor_block_nonzero = np.sum(self.tensor**2, axis = (1,2,3)) > 1e-8
+            #nn_R = np.sum(tensor_block_nonzero.astype(int))
             #print(nn_R)
             ##
 
 
 
-            t2 = time.time() 
-            if self.verbose:               
-                print(" Time elapsed for imposing the ASR: {} s".format( t2 - t1)) 
+            t2 = time.time()
+            if self.verbose:
+                print(" Time elapsed for imposing the ASR: {} s".format( t2 - t1))
                 print(" ")
                 print(" ============================================================")
- 
- 
+
+
         self.tensor = Settings.broadcast(self.tensor, enforce_double=True)
 
 
 
     def Center_fast(self, Far=1,tol=1.0e-5):
         """
-        CENTERING 
+        CENTERING
         =========
 
         This subrouine will center the third order force constant inside the Wigner-Seitz supercell.
-        This means that for each atomic indices in the tensor, it will be identified by the lowest 
+        This means that for each atomic indices in the tensor, it will be identified by the lowest
         perimiter between the replica of the atoms.
         Moreover, in case of existance of other elements not included in the original supercell with
-        the same perimeter, the tensor will be equally subdivided between equivalent triplets of atoms. 
+        the same perimeter, the tensor will be equally subdivided between equivalent triplets of atoms.
 
         This function should be called before performing the Fourier interpolation.
-        
+
         Faster but more memory demanding
-        """    
+        """
 
         t1 = time.time()
-        
-        
+
+
         if Settings.am_i_the_master():
-        
+
             if self.verbose:
                 print(" ")
                 print(" ======================= Centering ==========================")
-                print(" ")         
+                print(" ")
 
             # The supercell total size
             #
             nq0=self.supercell_size[0]
             nq1=self.supercell_size[1]
             nq2=self.supercell_size[2]
-            
+
             n_sup = np.prod(self.supercell_size)
             tensor_reshaped = np.transpose(self.tensor.reshape((n_sup, n_sup, 3*self.nat, 3*self.nat, 3*self.nat)),axes=[2,3,4,0,1])
             alat=self.unitcell_structure.unit_cell
-            
+
             lat_min_prev=np.array([-Far*nq0,-Far*nq1,-Far*nq2])
             lat_max_prev=np.array([nq0-1+Far*nq0,nq1-1+Far*nq1,nq2-1+Far*nq2])
             lat_len_prev=lat_max_prev-lat_min_prev+np.ones(3,dtype=int)
-            n_sup_WS_prev=np.prod(lat_len_prev,dtype=int)        
-               
+            n_sup_WS_prev=np.prod(lat_len_prev,dtype=int)
+
             centered_tmp, lat_min_new, lat_max_new =thirdorder.third_order_centering.pre_center(Far,
-                                        nq0,nq1,nq2,tol, 
-                                        self.unitcell_structure.unit_cell, self.tau, tensor_reshaped,self.nat)  
-            
+                                        nq0,nq1,nq2,tol,
+                                        self.unitcell_structure.unit_cell, self.tau, tensor_reshaped,self.nat)
+
             #
             # Reassignement
             #
             lat_len=lat_max_new-lat_min_new+np.ones(3,dtype=int)
             n_sup_WS=np.prod(lat_len,dtype=int)
-        
-            
+
+
             self.n_R=n_sup_WS**2
-                 
+
             centered,self.x_r_vector2,self.x_r_vector3,self.r_vector2,self.r_vector3= \
                     thirdorder.third_order_centering.assign(alat,lat_min_prev,lat_max_prev,centered_tmp,lat_min_new,
                                                     lat_max_new,n_sup_WS,self.nat,n_sup_WS_prev)
-                
-                    
-            
-            
-            t2 = time.time() 
-            
+
+
+
+
+            t2 = time.time()
+
             centered = np.transpose(centered, axes=[3,0,1,2])
-                    
-                    
+
+
             # Select the element different from zero
             tensor_block_nonzero = np.sum(centered**2, axis = (1,2,3)) > 1e-8
-            
+
             self.tensor = centered[tensor_block_nonzero, :, :, :]
             self.x_r_vector2 = self.x_r_vector2[:, tensor_block_nonzero]
             self.x_r_vector3 = self.x_r_vector3[:, tensor_block_nonzero]
@@ -2139,15 +2182,15 @@ class Tensor3():
             self.r_vector3 = self.r_vector3[:, tensor_block_nonzero]
             self.n_R = np.sum(tensor_block_nonzero.astype(int))
 
-            if self.verbose:               
-                print("Time elapsed for computing the centering: {} s".format( t2 - t1)) 
+            if self.verbose:
+                print("Time elapsed for computing the centering: {} s".format( t2 - t1))
                 print("Memory required for the centered tensor: {} Gb".format(centered.nbytes / 1024.**3))
                 print("Memory required after removing zero elements: {} Gb".format(self.tensor.nbytes / 1024.**3))
                 print(" ")
                 print(" ============================================================")
 
-           
-        
+
+
         self.tensor = Settings.broadcast(self.tensor, enforce_double=True)
         self.x_r_vector2 = Settings.broadcast(self.x_r_vector2)
         self.x_r_vector3 = Settings.broadcast(self.x_r_vector3)
@@ -2158,74 +2201,74 @@ class Tensor3():
 
     def Center_fast_noreduce(self, Far=1,tol=1.0e-5):
         """
-        CENTERING 
+        CENTERING
         =========
 
         This subrouine will center the third order force constant inside the Wigner-Seitz supercell.
-        This means that for each atomic indices in the tensor, it will be identified by the lowest 
+        This means that for each atomic indices in the tensor, it will be identified by the lowest
         perimiter between the replica of the atoms.
         Moreover, in case of existance of other elements not included in the original supercell with
-        the same perimeter, the tensor will be equally subdivided between equivalent triplets of atoms. 
+        the same perimeter, the tensor will be equally subdivided between equivalent triplets of atoms.
 
         This function should be called before performing the Fourier interpolation.
-        
+
         Faster but more memory demanding
-        """    
+        """
 
         t1 = time.time()
-        
-        
+
+
         if Settings.am_i_the_master():
-        
+
             if self.verbose:
                 print(" ")
                 print(" ======================= Centering ==========================")
-                print(" ")         
+                print(" ")
 
             # The supercell total size
             #
             nq0=self.supercell_size[0]
             nq1=self.supercell_size[1]
             nq2=self.supercell_size[2]
-            
+
             n_sup = np.prod(self.supercell_size)
             tensor_reshaped = np.transpose(self.tensor.reshape((n_sup, n_sup, 3*self.nat, 3*self.nat, 3*self.nat)),axes=[2,3,4,0,1])
             alat=self.unitcell_structure.unit_cell
-            
+
             lat_min_prev=np.array([-Far*nq0,-Far*nq1,-Far*nq2])
             lat_max_prev=np.array([nq0-1+Far*nq0,nq1-1+Far*nq1,nq2-1+Far*nq2])
             lat_len_prev=lat_max_prev-lat_min_prev+np.ones(3,dtype=int)
-            n_sup_WS_prev=np.prod(lat_len_prev,dtype=int)        
-               
+            n_sup_WS_prev=np.prod(lat_len_prev,dtype=int)
+
             centered_tmp, lat_min_new, lat_max_new =thirdorder.third_order_centering.pre_center(Far,
-                                        nq0,nq1,nq2,tol, 
-                                        self.unitcell_structure.unit_cell, self.tau, tensor_reshaped,self.nat)  
-            
+                                        nq0,nq1,nq2,tol,
+                                        self.unitcell_structure.unit_cell, self.tau, tensor_reshaped,self.nat)
+
             #
             # Reassignement
             #
             lat_len=lat_max_new-lat_min_new+np.ones(3,dtype=int)
             n_sup_WS=np.prod(lat_len,dtype=int)
-        
-            
+
+
             self.n_R=n_sup_WS**2
-                 
+
             centered,self.x_r_vector2,self.x_r_vector3,self.r_vector2,self.r_vector3= \
                     thirdorder.third_order_centering.assign(alat,lat_min_prev,lat_max_prev,centered_tmp,lat_min_new,
                                                     lat_max_new,n_sup_WS,self.nat,n_sup_WS_prev)
-                
-                    
-            
-            
-            t2 = time.time() 
-            
+
+
+
+
+            t2 = time.time()
+
             centered = np.transpose(centered, axes=[3,0,1,2])
-                    
- 
-                    
+
+
+
             # Select the element different from zero
-            tensor_block_nonzero = np.sum(centered**2, axis = (1,2,3)) > -10 
-            
+            tensor_block_nonzero = np.sum(centered**2, axis = (1,2,3)) > -10
+
             self.tensor = centered[tensor_block_nonzero, :, :, :]
             self.x_r_vector2 = self.x_r_vector2[:, tensor_block_nonzero]
             self.x_r_vector3 = self.x_r_vector3[:, tensor_block_nonzero]
@@ -2233,33 +2276,33 @@ class Tensor3():
             self.r_vector3 = self.r_vector3[:, tensor_block_nonzero]
             self.n_R = np.sum(tensor_block_nonzero.astype(int))
             print(self.n_R)
-            if self.verbose:               
-                print("Time elapsed for computing the centering: {} s".format( t2 - t1)) 
+            if self.verbose:
+                print("Time elapsed for computing the centering: {} s".format( t2 - t1))
                 print("Memory required for the centered tensor: {} Gb".format(centered.nbytes / 1024.**3))
                 print("Memory required after removing zero elements: {} Gb".format(self.tensor.nbytes / 1024.**3))
                 print(" ")
                 print(" ============================================================")
 
-           
-        
+
+
         #self.tensor = Settings.broadcast(self.tensor)
         #self.x_r_vector2 = Settings.broadcast(self.x_r_vector2)
         #self.x_r_vector3 = Settings.broadcast(self.x_r_vector3)
         #self.r_vector2 = Settings.broadcast(self.r_vector2)
         #self.r_vector3 = Settings.broadcast(self.r_vector3)
-        #self.n_R = Settings.broadcast(self.n_R)        
+        #self.n_R = Settings.broadcast(self.n_R)
 
 
-  
+
     def Interpolate_fort(self, q2, q3): # OK but slower
        """
        Interpolate the third order to the q2 and q3 points
-       
+
        Parameters
        ----------
            q2, q3 : ndarray(3)
                The q points
-       
+
        Results
        -------
            Phi3 : ndarray(size = (3*nat, 3*nat, 3*nat))
@@ -2271,39 +2314,39 @@ class Tensor3():
        interpolated_fc_tmp=thirdorder.third_order_interpol.interpol(tensor_new,
                                                            self.r_vector2,self.r_vector3,
                                                            q2,q3,self.n_R,self.nat)
-       
+
        interpolated_fc=np.transpose(interpolated_fc_tmp,axes=[2,1,0])
-       #final_fc = np.zeros((3*self.nat, 3*self.nat, 3*self.nat), 
+       #final_fc = np.zeros((3*self.nat, 3*self.nat, 3*self.nat),
                            #dtype = np.complex128)
        #for i in range(self.n_R):
-           #arg = 2  * np.pi * (q2.dot(self.r_vector2[:, i]) + 
+           #arg = 2  * np.pi * (q2.dot(self.r_vector2[:, i]) +
                                #q3.dot(self.r_vector3[:, i]))
-           
+
            #phase =  np.complex128(np.exp(1j * arg))
-           
+
            #final_fc += phase * self.tensor[i, :, :, :]
-       return interpolated_fc       
-    
+       return interpolated_fc
+
 
     # def Center_py(self,Far=1,tol=1.0e-5):
     #     """
-    #     CENTERING 
+    #     CENTERING
     #     =========
 
     #     This is the python routine to center the third order force constant inside the Wigner-Seitz supercell.
-    #     This means that for each atomic indices in the tensor, it will be identified by the lowest 
+    #     This means that for each atomic indices in the tensor, it will be identified by the lowest
     #     perimiter between the replica of the atoms.
     #     Moreover, in case of existance of other elements not included in the original supercell with
-    #     the same perimeter, the tensor will be equally subdivided between equivalent triplets of atoms. 
+    #     the same perimeter, the tensor will be equally subdivided between equivalent triplets of atoms.
 
     #     This function should be called before performing the Fourier interpolation.
-    #     """    
-        
+    #     """
+
     #     if self.verbose:
     #         print(" ")
     #         print(" === Centering === ")
-    #         print(" ")        
-        
+    #         print(" ")
+
     #     # The supercell total size
     #     nq0=self.supercell_size[0]
     #     nq1=self.supercell_size[1]
@@ -2330,7 +2373,7 @@ class Tensor3():
     #     t1 = time.time()
     #     for i, (a2,b2,c2) in enumerate(itertools.product(range(-nq0, nq0), range(-nq1, nq1), range(-nq2, nq2))):
     #         for j, (a3,b3,c3) in enumerate(itertools.product(range(-nq0, nq0), range(-nq1, nq1), range(-nq2, nq2))):
-                
+
     #             # Enclose in one index i and j
     #             total_index = i * WS_nsup + j
 
@@ -2340,12 +2383,12 @@ class Tensor3():
 
 
     #     # Convert all the vectors in cartesian coordinates
-    #     WS_r_vector2[:,:] = self.unitcell_structure.unit_cell.T.dot(WS_xr_vector2) 
+    #     WS_r_vector2[:,:] = self.unitcell_structure.unit_cell.T.dot(WS_xr_vector2)
     #     WS_r_vector3[:,:] = self.unitcell_structure.unit_cell.T.dot(WS_xr_vector3)
-        
+
     #     # print("WS vectors:")
     #     # print(WS_r_vector2.T)
-        
+
 
 
     #     t2 = time.time()
@@ -2385,7 +2428,7 @@ class Tensor3():
     #             # Store the replica vector in crystal coordinates
     #             V2_cryst[total_index, :] = np.array((a2,b2,c2)) * np.array(self.supercell_size)
     #             V3_cryst[total_index, :] = np.array((a3,b3,c3)) * np.array(self.supercell_size)
-                
+
     #             # Compute the distances between the replica of the indices
     #             dR_12[total_index, :] = xR_2
     #             dR_13[total_index, :] = xR_3
@@ -2395,7 +2438,7 @@ class Tensor3():
     #             PP[total_index] = R_2.dot(R_2)
     #             PP[total_index]+= R_3.dot(R_3)
     #             PP[total_index]+= np.sum((R_3 - R_2)**2)
-                
+
     #             #print("R2:", R_2, "R3:", R_3, "PP:", PP[total_index])
     #     t2 = time.time()
 
@@ -2415,30 +2458,30 @@ class Tensor3():
     #             r1 = self.tau[at1,:]
     #             r2 = self.r_vector2[:, iR] + self.tau[at2,:]
     #             r3 = self.r_vector3[:, iR] + self.tau[at3,:]
-                
+
     #             # Lets compute the perimeter without the replicas
     #             pp = np.sum((r1-r2)**2)
     #             pp+= np.sum((r2-r3)**2)
     #             pp+= np.sum((r1-r3)**2)
-                
+
     #             # Get the crystalline vectors (in the supercell)
     #             x1 = Methods.cart_to_cryst(self.supercell_structure.unit_cell, r1)
     #             x2 = Methods.cart_to_cryst(self.supercell_structure.unit_cell, r2)
     #             x3 = Methods.cart_to_cryst(self.supercell_structure.unit_cell, r3)
-                
+
     #             # Now we compute the quantities that do not depend on the lattice replica
     #             # As the current perimeter and the gg vector
     #             G_12 = 2*G.dot(x2-x1)
     #             G_23 = 2*G.dot(x3-x2)
     #             G_13 = 2*G.dot(x3-x1)
-                
+
     #             # Now we can compute the perimeters of all the replica
     #             # all toghether
     #             P = PP[:] + pp
     #             P[:] += dR_12.dot(G_12)
     #             P[:] += dR_23.dot(G_23)
     #             P[:] += dR_13.dot(G_13)
-                
+
     #             # if self.tensor[iR, 3*at1, 3*at2, 3*at3] > 0:
     #             #     #print("all the perimeters:")
     #             #     #print(P)
@@ -2448,16 +2491,16 @@ class Tensor3():
     #             #     print("The replica perimeter:", PP[index])
     #             #     print("The standard perimeter:", pp)
     #             #     print("The the cross values:")
-    #             #     print(dR_12.dot(G_12)[index], dR_13.dot(G_13)[index], dR_23.dot(G_23)[index]) 
+    #             #     print(dR_12.dot(G_12)[index], dR_13.dot(G_13)[index], dR_23.dot(G_23)[index])
     #             #     print("The replica vectors are:", "R2:", V2_cryst[index,:], "R3:", V3_cryst[index,:])
-                
+
     #             # Now P is filled with the perimeters of all the replica
     #             # We can easily find the minimum
     #             P_min = np.min(P)
-                
+
     #             # We can find how many they are and a mask on their positions
     #             min_P_mask = (np.abs(P_min - P) < 1e-6).astype(bool)
-                
+
     #             # The number of minimium perimeters
     #             n_P = np.sum(min_P_mask.astype(int))
 
@@ -2469,12 +2512,12 @@ class Tensor3():
     #             r2_cryst = np.tile(self.x_r_vector2[:, iR], (n_P, 1)) + v2_shift
     #             r3_cryst = np.tile(self.x_r_vector3[:, iR], (n_P, 1)) + v3_shift
     #             verb = False
-                
+
 
     #             # Get the block indices in the WS cell
     #             WS_i_R = get_ws_block_index(self.supercell_size, r2_cryst, r3_cryst, verbose = verb)
-                
-    #             # Now we fill all the element of the WS tensor 
+
+    #             # Now we fill all the element of the WS tensor
     #             # with the current tensor, dividing by the number of elemets
     #             new_elemet = np.tile(self.tensor[iR, 3*at1:3*at1+3, 3*at2:3*at2+3, 3*at3:3*at3+3], (n_P, 1,1,1))
     #             new_elemet /= n_P
@@ -2494,39 +2537,39 @@ class Tensor3():
     #     self.x_r_vector3 = WS_xr_vector3
     #     self.n_R = WS_n_R
 
-    
+
     def ApplySumRule_py(self):
         r"""
         Enforce the sum rule by projecting the third order force constant
         in the sum rule space defined by
-        
+
         .. math::
-        
+
             P = ( 1 - Q )
-            
+
             Q_{st}^{\alpha\beta} = 1 / nat_{sc} \left( \sum_x \delta_{x\alpha}\delta{x\beta}\right)
         """
-        
+
         # Apply the sum rule on the last index
-        
+
         n_sup_WS = int(np.sqrt(self.n_R))
-        
+
         for I_r2 in range(n_sup_WS):
             # Here we want to sum over r3 (indices that goes from total_index to total_index + n_sup_WS
             total_index = n_sup_WS * I_r2
-            
+
             for s, t in itertools.product(range(3 * self.nat) , range(3*self.nat)):
                 for gamma in range(3):
                     # gamma mask runs over the third atom index
                     gamma_mask = np.tile(np.arange(3) == gamma, (self.nat, 1)).ravel()
                     delta = np.sum(self.tensor[total_index : total_index + n_sup_WS, s, t, gamma_mask]) / (self.nat * self.n_R)
                     self.tensor[total_index : total_index + n_sup_WS, s, t, gamma_mask] -= delta
-            
-            
+
+
         # Now apply the sum rule on the second index
         for I_r3 in range(n_sup_WS):
             total_index_mask = (np.arange(self.n_R) % n_sup_WS) == I_r3
-            
+
             for s, t in itertools.product(range(3 * self.nat) , range(3*self.nat)):
                 for gamma in range(3):
                     gamma_mask = np.tile(np.arange(3) == gamma, (self.nat, 1)).ravel()
@@ -2539,38 +2582,38 @@ class Tensor3():
                     delta = 0
                     for r in range(self.nat):
                         delta += np.sum(self.tensor[total_index_mask, s, 3*r + gamma, t]) / (self.nat * self.n_R)
-                        
+
                     for r in range(self.nat):
                         self.tensor[total_index_mask, s, 3*r + gamma, t] -= delta
-            
-        
+
+
         # Now apply the sum rule on the second index
         for total_index in range(n_sup_WS**2):
             r2 = self.r_vector2[:, total_index]
             r3 = self.r_vector3[:, total_index]
-            
+
             for s, t in itertools.product(range(3 * self.nat) , range(3*self.nat)):
                 for gamma in range(3):
                     gamma_mask = np.tile(np.arange(3) == gamma, (self.nat, 1)).ravel()
-                    
+
                     delta = 0
                     for i_Rt in range(n_sup_WS):
                         Rt = self.r_vector2[:, i_Rt * n_sup_WS]
                         Rnew = r3 - r2 + Rt
-                        Rnew = np.tile(Rnew, (n_sup_WS,1)).T 
-                        
+                        Rnew = np.tile(Rnew, (n_sup_WS,1)).T
+
                         distances = np.sum(np.abs( Rnew - self.r_vector3[:, :n_sup_WS]), axis = 0)
                         good_vector  = np.argmin(distances)
                         if distances[good_vector] < 1e-6:
-                            
+
                             vect_index = i_Rt * n_sup_WS + good_vector
                             delta += np.sum(self.tensor[vect_index, gamma_mask, s, t]) / (self.nat * self.n_R)
-                    
+
                     self.tensor[total_index, gamma_mask, s, t] -= delta
-                
+
     def get_ws_block_index(supercell_size, cryst_vectors2, cryst_vectors3, verbose = False):
         """
-        Get the block in the supercell that contains the WS cell, 
+        Get the block in the supercell that contains the WS cell,
         given the crystalline positions of vectors, returns the indices of the block.
 
         The block identifies the supercell of the three atoms as
@@ -2589,7 +2632,7 @@ class Tensor3():
             cryst_vectors3 : ndarray(size= (N_vectors, 3), dtype = int)
                 The crystalline coordinates of the third vector.
                 It could also be a single vector.
-        
+
         Results
         -------
             block_id : ndarray(size = N_vectors, dtype = int)
@@ -2598,7 +2641,7 @@ class Tensor3():
 
         # Get the composed index in the iteration of the two vectors
         # Rescale the vectors
-        new_v2 = cryst_vectors2.copy() 
+        new_v2 = cryst_vectors2.copy()
         new_v2 += np.array(supercell_size)
 
         new_v3 = cryst_vectors3.copy()
@@ -2614,11 +2657,11 @@ class Tensor3():
         i2 = new_v2[:, 2] + new_v2[:,1] * ws_z
         i2 += new_v2[:,0] * ws_z * ws_y
 
-        i3 = new_v3[:, 2] + new_v3[:,1] * ws_z 
+        i3 = new_v3[:, 2] + new_v3[:,1] * ws_z
         i3 += new_v3[:,0] * ws_z * ws_y
 
         # Collect everything in the block index
-        WS_i_R = i2 * WS_sup + i3 
+        WS_i_R = i2 * WS_sup + i3
 
         # Convert in integer for indexing
         WS_i_R = WS_i_R.astype(int)
@@ -2638,73 +2681,73 @@ class Tensor3():
 
     def Center_old(self, Far=1,tol=1.0e-5):
         """
-        CENTERING 
+        CENTERING
         =========
 
         This subrouine will center the third order force constant inside the Wigner-Seitz supercell.
-        This means that for each atomic indices in the tensor, it will be identified by the lowest 
+        This means that for each atomic indices in the tensor, it will be identified by the lowest
         perimiter between the replica of the atoms.
         Moreover, in case of existance of other elements not included in the original supercell with
-        the same perimeter, the tensor will be equally subdivided between equivalent triplets of atoms. 
+        the same perimeter, the tensor will be equally subdivided between equivalent triplets of atoms.
 
         This function should be called before performing the Fourier interpolation.
-        """    
+        """
 
         t1 = time.time()
-        
-        
+
+
         if Settings.am_i_the_master():
-        
+
             if self.verbose:
                 print(" ")
                 print(" ======================= Centering ==========================")
-                print(" ")         
+                print(" ")
 
             # The supercell total size
             #
             nq0=self.supercell_size[0]
             nq1=self.supercell_size[1]
             nq2=self.supercell_size[2]
-            
+
             n_sup = np.prod(self.supercell_size)
-            tensor_reshaped = np.transpose(self.tensor.reshape((n_sup, n_sup, 
+            tensor_reshaped = np.transpose(self.tensor.reshape((n_sup, n_sup,
                                                                 3*self.nat, 3*self.nat, 3*self.nat)),axes=[2,3,4,0,1])
             alat=self.unitcell_structure.unit_cell
-            
+
             weight,xR2,xR3 =thirdorder.third_order_centering.analysis(Far,
-                                        nq0,nq1,nq2,tol, 
-                                        self.unitcell_structure.unit_cell, self.tau, tensor_reshaped,self.nat)  
-            
-            
+                                        nq0,nq1,nq2,tol,
+                                        self.unitcell_structure.unit_cell, self.tau, tensor_reshaped,self.nat)
+
+
             xR2_reshaped=np.reshape(xR2,(3,(2*Far+1)*(2*Far+1)*(2*Far+1)*n_sup*self.nat*self.nat*self.nat*n_sup*n_sup))
             xR3_reshaped=np.reshape(xR3,(3,(2*Far+1)*(2*Far+1)*(2*Far+1)*n_sup*self.nat*self.nat*self.nat*n_sup*n_sup))
             xR23 = np.unique(np.vstack((xR2_reshaped,xR3_reshaped)),axis=1)
-            
+
             self.n_R=xR23.shape[1]
             self.x_r_vector2,self.x_r_vector3 = np.vsplit(xR23,2)
             self.r_vector2=self.unitcell_structure.unit_cell.T.dot(self.x_r_vector2)
             self.r_vector3=self.unitcell_structure.unit_cell.T.dot(self.x_r_vector3)
-    
+
             centered=thirdorder.third_order_centering.center(tensor_reshaped,weight,
                                                              self.x_r_vector2,xR2,self.x_r_vector3,xR3,
                                                              Far,self.nat,n_sup,self.n_R)
-            
 
-            
-            t2 = time.time() 
-            
+
+
+            t2 = time.time()
+
             self.tensor = np.transpose(centered, axes=[3,0,1,2])
-  
-            if self.verbose:               
-                print("Time elapsed for computing the centering: {} s".format( t2 - t1)) 
+
+            if self.verbose:
+                print("Time elapsed for computing the centering: {} s".format( t2 - t1))
                 #print("Memory required for the not centered tensor {} Gb".format(self.tensor.nbytes / 1024.**3))
                 print("Memory required for the centered tensor: {} Gb".format(centered.nbytes / 1024.**3))
                 #print("Memory required after removing zero elements: {} Gb".format(self.tensor.nbytes / 1024.**3))
                 print(" ")
                 print(" ============================================================")
 
-           
-        
+
+
         self.tensor = Settings.broadcast(self.tensor, enforce_double=True)
         self.x_r_vector2 = Settings.broadcast(self.x_r_vector2)
         self.x_r_vector3 = Settings.broadcast(self.x_r_vector3)
@@ -2714,31 +2757,31 @@ class Tensor3():
         self.n_sup = Settings.broadcast(self.n_sup)
 
     def ApplySumRule_old(self) :
-        
+
         t1 = time.time()
-        
+
         if Settings.am_i_the_master():
-        
+
             if self.verbose:
                 print(" ")
                 print(" ======================= Imposing ASR ==========================")
-                print(" ")         
-            
+                print(" ")
 
-            
+
+
             xR_list=np.unique(self.x_r_vector3, axis = 1)
             totnum_R=xR_list.shape[1]
-          
-            xRmin=np.min(xR_list,1) 
-            xRmax=np.max(xR_list,1) 
+
+            xRmin=np.min(xR_list,1)
+            xRmax=np.max(xR_list,1)
             xRlen=xRmax-xRmin+np.ones((3,),dtype=int)
-            n_Rnew=np.prod(xRlen)**2          
-          
-            if n_Rnew != self.n_R: 
+            n_Rnew=np.prod(xRlen)**2
+
+            if n_Rnew != self.n_R:
                 if self.verbose:
                     print("*********")
                     print("Enlarging")
-                    print("*********")                    
+                    print("*********")
                 # reassignement
                 xr2_old=self.x_r_vector2
                 xr3_old=self.x_r_vector3
@@ -2746,34 +2789,34 @@ class Tensor3():
                 self.x_r_vector2=np.zeros((3,n_Rnew),dtype=np.int)
                 self.x_r_vector3=np.zeros((3,n_Rnew),dtype=np.int)
                 self.r_vector2=np.zeros((3,n_Rnew))
-                self.r_vector3=np.zeros((3,n_Rnew))                
-                for index_cell2 in range(np.prod(xRlen)):                
+                self.r_vector3=np.zeros((3,n_Rnew))
+                for index_cell2 in range(np.prod(xRlen)):
                     n_cell_x2,n_cell_y2,n_cell_z2=Methods.one_to_three_len(index_cell2,v_min=xRmin,v_len=xRlen)
                     for index_cell3 in range(np.prod(xRlen)):
-                        n_cell_x3,n_cell_y3,n_cell_z3=Methods.one_to_three_len(index_cell3,v_min=xRmin,v_len=xRlen)      
+                        n_cell_x3,n_cell_y3,n_cell_z3=Methods.one_to_three_len(index_cell3,v_min=xRmin,v_len=xRlen)
                         #
                         total_index_cell = index_cell3 + np.prod(xRlen) * index_cell2
                         #
                         self.x_r_vector2[:, total_index_cell] = (n_cell_x2, n_cell_y2, n_cell_z2)
                         self.r_vector2[:, total_index_cell] = self.unitcell_structure.unit_cell.T.dot(self.x_r_vector2[:, total_index_cell])
                         self.x_r_vector3[:, total_index_cell] =  n_cell_x3, n_cell_y3, n_cell_z3
-                        self.r_vector3[:, total_index_cell] = self.unitcell_structure.unit_cell.T.dot(self.x_r_vector3[:, total_index_cell])                        
-                ###                
+                        self.r_vector3[:, total_index_cell] = self.unitcell_structure.unit_cell.T.dot(self.x_r_vector3[:, total_index_cell])
+                ###
                 tensor_trnsp = np.transpose(self.tensor,axes=[3,2,1,0])
                 tensor=thirdorder.third_order_asr.enlarge(tensor_trnsp,
                                                           self.x_r_vector2,self.x_r_vector3,
                                                           xr2_old,xr3_old,
                                                           self.nat,n_Rnew,self.n_R)
-                      
+
             xR_list=np.unique(self.x_r_vector3, axis = 1)
             totnum_R=xR_list.shape[1]
-          
-            xRmin=np.min(xR_list,1) 
-            xRmax=np.max(xR_list,1) 
+
+            xRmin=np.min(xR_list,1)
+            xRmax=np.max(xR_list,1)
             xRlen=xRmax-xRmin+np.ones((3,),dtype=int)
-            self.n_R=np.prod(xRlen)**2          
-           
-          
+            self.n_R=np.prod(xRlen)**2
+
+
             xRdiff_list=np.unique(self.x_r_vector2-self.x_r_vector3, axis = 1)
             totnum_Rdiff=xRdiff_list.shape[1]
 
@@ -2783,11 +2826,11 @@ class Tensor3():
                                                           self.x_r_vector2,self.x_r_vector3,
                                                           totnum_Rdiff,self.n_R,totnum_R,self.nat)
 
-            phi_asr=np.transpose(phi_asr, axes=[3,2,1,0])  
+            phi_asr=np.transpose(phi_asr, axes=[3,2,1,0])
 
            # Select the element different from zero ########################
-            tensor_block_nonzero = np.sum(phi_asr**2, axis = (1,2,3)) > 1e-8 
-            
+            tensor_block_nonzero = np.sum(phi_asr**2, axis = (1,2,3)) > 1e-8
+
             self.tensor = phi_asr[tensor_block_nonzero, :, :, :]
             self.x_r_vector2 = self.x_r_vector2[:, tensor_block_nonzero]
             self.x_r_vector3 = self.x_r_vector3[:, tensor_block_nonzero]
@@ -2795,15 +2838,15 @@ class Tensor3():
             self.r_vector3 = self.r_vector3[:, tensor_block_nonzero]
             self.n_R = np.sum(tensor_block_nonzero.astype(int))
             t2 = time.time()
-            if self.verbose:               
-                print("Time elapsed for imposing the ASR: {} s".format( t2 - t1)) 
+            if self.verbose:
+                print("Time elapsed for imposing the ASR: {} s".format( t2 - t1))
                 print("Memory required for the ASR centered tensor: {} Gb".format(phi_asr.nbytes / 1024.**3))
                 print("Memory required after removing zero elements: {} Gb".format(self.tensor.nbytes / 1024.**3))
                 print(" ")
                 print(" ============================================================")
 
 
- 
+
         self.tensor = Settings.broadcast(self.tensor, enforce_double=True)
         self.x_r_vector2 = Settings.broadcast(self.x_r_vector2)
         self.x_r_vector3 = Settings.broadcast(self.x_r_vector3)
@@ -2815,75 +2858,75 @@ class Tensor3():
 
 
     def Center_and_ApplySumRule_old(self,Far=1,tol=1.0e-5) :
-        
+
         t1 = time.time()
-        
+
         if Settings.am_i_the_master():
 
 
             if self.verbose:
                 print(" ")
                 print(" ======================= Centering ==========================")
-                print(" ")         
+                print(" ")
 
             # The supercell total size
             #
             nq0=self.supercell_size[0]
             nq1=self.supercell_size[1]
             nq2=self.supercell_size[2]
-            
+
             n_sup = np.prod(self.supercell_size)
-            tensor_reshaped = np.transpose(self.tensor.reshape((n_sup, n_sup, 
+            tensor_reshaped = np.transpose(self.tensor.reshape((n_sup, n_sup,
                                                                 3*self.nat, 3*self.nat, 3*self.nat)),axes=[2,3,4,0,1])
             alat=self.unitcell_structure.unit_cell
-            
+
             weight,xR2,xR3 =thirdorder.third_order_centering.analysis(Far,
-                                        nq0,nq1,nq2,tol, 
-                                        self.unitcell_structure.unit_cell, self.tau, tensor_reshaped,self.nat)  
-            
-            
+                                        nq0,nq1,nq2,tol,
+                                        self.unitcell_structure.unit_cell, self.tau, tensor_reshaped,self.nat)
+
+
             xR2_reshaped=np.reshape(xR2,(3,(2*Far+1)*(2*Far+1)*(2*Far+1)*n_sup*self.nat*self.nat*self.nat*n_sup*n_sup))
             xR3_reshaped=np.reshape(xR3,(3,(2*Far+1)*(2*Far+1)*(2*Far+1)*n_sup*self.nat*self.nat*self.nat*n_sup*n_sup))
             xR23 = np.unique(np.vstack((xR2_reshaped,xR3_reshaped)),axis=1)
-            
+
             self.n_R=xR23.shape[1]
             self.x_r_vector2,self.x_r_vector3 = np.vsplit(xR23,2)
             self.r_vector2=self.unitcell_structure.unit_cell.T.dot(self.x_r_vector2)
             self.r_vector3=self.unitcell_structure.unit_cell.T.dot(self.x_r_vector3)
-    
+
             centered=thirdorder.third_order_centering.center(tensor_reshaped,weight,
                                                              self.x_r_vector2,xR2,self.x_r_vector3,xR3,
                                                              Far,self.nat,n_sup,self.n_R)
-            
-            t2 = time.time() 
-            
+
+            t2 = time.time()
+
             self.tensor = np.transpose(centered, axes=[3,0,1,2])
-  
-            if self.verbose:               
-                print("Time elapsed for computing the centering: {} s".format( t2 - t1)) 
+
+            if self.verbose:
+                print("Time elapsed for computing the centering: {} s".format( t2 - t1))
                 print(" Memory required for the centered tensor: {} Gb".format(centered.nbytes / 1024.**3))
 
-        
+
             if self.verbose:
                 print(" ")
                 print(" ======================= Imposing ASR ==========================")
-                print(" ")         
-            
+                print(" ")
 
-            
+
+
             xR_list=np.unique(self.x_r_vector3, axis = 1)
             totnum_R=xR_list.shape[1]
-          
-            xRmin=np.min(xR_list,1) 
-            xRmax=np.max(xR_list,1) 
+
+            xRmin=np.min(xR_list,1)
+            xRmax=np.max(xR_list,1)
             xRlen=xRmax-xRmin+np.ones((3,),dtype=int)
-            n_Rnew=np.prod(xRlen)**2          
-          
-            if n_Rnew != self.n_R: 
+            n_Rnew=np.prod(xRlen)**2
+
+            if n_Rnew != self.n_R:
                 if self.verbose:
                     print("*********")
                     print("Enlarging")
-                    print("*********")                    
+                    print("*********")
                 # reassignement
                 xr2_old=self.x_r_vector2
                 xr3_old=self.x_r_vector3
@@ -2891,34 +2934,34 @@ class Tensor3():
                 self.x_r_vector2=np.zeros((3,n_Rnew),dtype=int)
                 self.x_r_vector3=np.zeros((3,n_Rnew),dtype=int)
                 self.r_vector2=np.zeros((3,n_Rnew))
-                self.r_vector3=np.zeros((3,n_Rnew))                
-                for index_cell2 in range(np.prod(xRlen)):                
+                self.r_vector3=np.zeros((3,n_Rnew))
+                for index_cell2 in range(np.prod(xRlen)):
                     n_cell_x2,n_cell_y2,n_cell_z2=Methods.one_to_three_len(index_cell2,v_min=xRmin,v_len=xRlen)
                     for index_cell3 in range(np.prod(xRlen)):
-                        n_cell_x3,n_cell_y3,n_cell_z3=Methods.one_to_three_len(index_cell3,v_min=xRmin,v_len=xRlen)      
+                        n_cell_x3,n_cell_y3,n_cell_z3=Methods.one_to_three_len(index_cell3,v_min=xRmin,v_len=xRlen)
                         #
                         total_index_cell = index_cell3 + np.prod(xRlen) * index_cell2
                         #
                         self.x_r_vector2[:, total_index_cell] = (n_cell_x2, n_cell_y2, n_cell_z2)
                         self.r_vector2[:, total_index_cell] = self.unitcell_structure.unit_cell.T.dot(self.x_r_vector2[:, total_index_cell])
                         self.x_r_vector3[:, total_index_cell] =  n_cell_x3, n_cell_y3, n_cell_z3
-                        self.r_vector3[:, total_index_cell] = self.unitcell_structure.unit_cell.T.dot(self.x_r_vector3[:, total_index_cell])                        
-                ###                
+                        self.r_vector3[:, total_index_cell] = self.unitcell_structure.unit_cell.T.dot(self.x_r_vector3[:, total_index_cell])
+                ###
                 tensor_trnsp = np.transpose(self.tensor,axes=[3,2,1,0])
                 tensor=thirdorder.third_order_asr.enlarge(tensor_trnsp,
                                                           self.x_r_vector2,self.x_r_vector3,
                                                           xr2_old,xr3_old,
                                                           self.nat,n_Rnew,self.n_R)
-                      
+
             xR_list=np.unique(self.x_r_vector3, axis = 1)
             totnum_R=xR_list.shape[1]
-          
-            xRmin=np.min(xR_list,1) 
-            xRmax=np.max(xR_list,1) 
+
+            xRmin=np.min(xR_list,1)
+            xRmax=np.max(xR_list,1)
             xRlen=xRmax-xRmin+np.ones((3,),dtype=int)
-            self.n_R=np.prod(xRlen)**2          
-           
-          
+            self.n_R=np.prod(xRlen)**2
+
+
             xRdiff_list=np.unique(self.x_r_vector2-self.x_r_vector3, axis = 1)
             totnum_Rdiff=xRdiff_list.shape[1]
 
@@ -2928,26 +2971,26 @@ class Tensor3():
                                                           self.x_r_vector2,self.x_r_vector3,
                                                           totnum_Rdiff,self.n_R,totnum_R,self.nat)
 
-            phi_asr=np.transpose(phi_asr, axes=[3,2,1,0])  
+            phi_asr=np.transpose(phi_asr, axes=[3,2,1,0])
 
            # Select the element different from zero
             tensor_block_nonzero = np.sum(phi_asr**2, axis = (1,2,3)) > 1e-8
-            
+
             self.tensor = phi_asr[tensor_block_nonzero, :, :, :]
             self.x_r_vector2 = self.x_r_vector2[:, tensor_block_nonzero]
             self.x_r_vector3 = self.x_r_vector3[:, tensor_block_nonzero]
             self.r_vector2 = self.r_vector2[:, tensor_block_nonzero]
             self.r_vector3 = self.r_vector3[:, tensor_block_nonzero]
             self.n_R = np.sum(tensor_block_nonzero.astype(int))
- 
-            t3 = time.time() 
-            if self.verbose:               
-                print(" Time elapsed for imposing the ASR: {} s".format( t3 - t2)) 
+
+            t3 = time.time()
+            if self.verbose:
+                print(" Time elapsed for imposing the ASR: {} s".format( t3 - t2))
                 print(" Memory required for the ASR centered tensor: {} Gb".format(phi_asr.nbytes / 1024.**3))
                 print(" Memory required after removing zero elements: {} Gb".format(self.tensor.nbytes / 1024.**3))
                 print(" ")
                 print(" ============================================================")
- 
+
         self.tensor = Settings.broadcast(self.tensor, enforce_double=True)
         self.x_r_vector2 = Settings.broadcast(self.x_r_vector2)
         self.x_r_vector3 = Settings.broadcast(self.x_r_vector3)
@@ -2955,12 +2998,12 @@ class Tensor3():
         self.r_vector3 = Settings.broadcast(self.r_vector3, enforce_double=True)
         self.n_R = Settings.broadcast(self.n_R)
         self.n_sup = Settings.broadcast(self.n_sup)
- 
- 
+
+
 
 
 # Plot the phonons in the given k-path
-def get_phonons_in_qpath(dynamical_matrix, q_path):
+def get_phonons_in_qpath(dynamical_matrix, q_path, center_args = {}):
     """
     GET PHONONS IN K-PATH
     =====================
@@ -2973,7 +3016,10 @@ def get_phonons_in_qpath(dynamical_matrix, q_path):
             The dynamical matrix (with effective charges)
         q_path : list of ndarray(size of 3)
             List of q points in 2pi/A units.
-    
+        center_args : dict
+            Dictionary of parameters to be passed to the Center function of
+            Tensor2
+
     Results
     -------
         frequencies : ndarray(size= (Nq, Nmodes))
@@ -3018,7 +3064,7 @@ def get_phonons_in_qpath(dynamical_matrix, q_path):
                  dynamical_matrix.GetSupercell())
 
     t2.SetupFromPhonons(dynamical_matrix)
-    t2.Center(Far = 4)
+    t2.Center(**center_args)
     t2.Apply_ASR()
 
     n_k, _ = q_path.shape
