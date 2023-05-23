@@ -49,9 +49,6 @@ def test_interpolate_on_itself(dyn_name, nqirr, verbose = False):
 
         assert np.max(np.abs(w - w_tensor)) < 1e-2, "Error on point q = {}".format(q)
 
-
-
-
 if __name__ == "__main__":
 
     test_interpolate_on_itself(*TEST_DYN[-2], verbose = True)

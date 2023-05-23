@@ -309,6 +309,10 @@ K_POINTS automatic
                 if "JOB DONE" in line:
                     job_done = True
 
+                # Check if the script exited correctly
+                if "JOB DONE" in line:
+                    job_done = True
+
                 if read_structure:
                     new_data = line.replace("=", " ").split()
                     if new_data[0] == "celldm(1)":
@@ -450,6 +454,66 @@ class Relax:
             optimized_structure : CC.Structure.Structure()
                 The structure after the optimization
         """
+
+        if "method" in kwargs:
+            self.method = kwargs["method"]
+
+
+        # Parse the function to match the scipy minimizer
+        self.last_eval = np.zeros(self.structure.coords.ravel().shape, dtype = np.double)
+        self.last_energy = 0
+        self.last_force = np.zeros_like(self.last_eval)
+
+        def func(x):
+            if np.linalg.norm(x - self.last_eval) < 1e-16:
+                return self.last_energy, self.last_force
+
+            struct = self.structure.copy()
+            struct.coords[:,:] = x.reshape(struct.coords.shape)
+
+            energy, forces = get_energy_forces(self.calculator, struct)
+
+            self.last_eval[:] = x.copy()
+            self.last_energy = energy
+            self.last_force[:] = -forces.ravel().copy()
+
+
+            return energy, -forces.ravel()
+
+        def callback(xk):
+
+            if self.verbose:
+                energy, force = func(xk)
+                #print('it:', self.iterations)
+                #print('energy:', energy)
+                #print('force:', force)
+                print("{:5d}) {:16.8f} eV   {:16.8f} eV/A".format(self.iterations, energy, np.linalg.norm(force)))
+                self.iterations += 1
+
+            if self.store_trajectory:
+                struc = self.structure.copy()
+                struc.coords[:,:] = xk.reshape(struc.coords.shape)
+                self.trajectory.append(struc)
+
+        if self.verbose:
+            print("STATIC STRUCTURE RELAX")
+            print()
+            print("{:5s}  {:16s}      {:16s}     ".format("ITERS", "ENERGY", "FORCE GRAD"))
+            print("--------------------------------------------------")
+
+
+        res = scipy.optimize.minimize(func, self.structure.coords.ravel(), method = self.method, jac = True, callback = callback, **kwargs)
+
+        if self.verbose:
+            print()
+
+        final_struct = self.structure.copy()
+        final_struct.coords[:,:] = res.x.reshape(final_struct.coords.shape)
+        self.structure = final_struct
+
+        return final_struct
+
+
 
         if "method" in kwargs:
             self.method = kwargs["method"]

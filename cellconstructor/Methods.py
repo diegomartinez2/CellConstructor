@@ -39,16 +39,16 @@ except:
     __PHONOPY=False
 
 #from . import Structure
- 
+
 BOHR_TO_ANGSTROM = 0.529177249
 __EPSILON__ = 1e-6
 EV_TO_J = 1.602176634e-19
 AU = 1.66053906660e-27
 
 
-__all__ = ["covariant_coordinates", "from_dynmat_to_spectrum", 
-           "put_into_cell", "get_minimal_orthorombic_cell", 
-           "write_dynmat_in_qe_format", "get_gr", "cell2abc_alphabetagamma", 
+__all__ = ["covariant_coordinates", "from_dynmat_to_spectrum",
+           "put_into_cell", "get_minimal_orthorombic_cell",
+           "write_dynmat_in_qe_format", "get_gr", "cell2abc_alphabetagamma",
            "DistanceBetweenStructures"]
 
 
@@ -56,18 +56,18 @@ def covariant_coordinates(basis, vectors):
     """
     Covariant Coordinates
     =====================
-    
+
     This method returns the covariant coordinates of the given vector in the chosen basis.
     Covariant coordinates are the coordinates expressed as:
         .. math::
-            
+
             \\vec v = \\sum_i \\alpha_i \\vec e_i
-            
-            
+
+
     where :math:`\\vec e_i` are the basis vectors. Note: the :math:`\\alpha_i` are not the
     projection of the vector :math:`\\vec v` on :math:`\\vec e_i` if the basis is not orthogonal.
-    
-    
+
+
     Parameters
     ----------
         - basis : ndarray(size = (N,N))
@@ -75,16 +75,16 @@ def covariant_coordinates(basis, vectors):
         - vector : ndarray(size = (N_vectors, N))
             The vectors expressed in cartesian coordinates.
             It coould be just one ndarray(size=N)
-            
+
     Results
     -------
         - cov_vector : Nx float
             The :math:`\\alpha_i` values.
-            
+
     """
 
     M, N = np.shape(basis)
-    
+
     metric_tensor = np.zeros((N,N))
 
     metric_tensor = basis.dot(basis.T)
@@ -93,19 +93,19 @@ def covariant_coordinates(basis, vectors):
     #         metric_tensor[i, j] = metric_tensor[j,i] = basis[i,:].dot(basis[j, :])
 
     imt = np.linalg.inv(metric_tensor)
-    
+
     contra_vect = vectors.dot(basis.T)
     return contra_vect.dot(imt)
 
 def cryst_to_cart(unit_cell, cryst_vectors):
     """
-    Convert a vector from crystalline to cartesian. 
+    Convert a vector from crystalline to cartesian.
     Many vectors counld be pased toghether, in that case the last axis must be the one with the vector.
 
     Parameters
     ----------
         unit_cell : ndarray((3,3))
-            The unit cell vectors. 
+            The unit cell vectors.
             The i-th cell vector is unit_cell[i, :]
         cryst_vectors : ndarray((N_vectors, 3)) or ndarray(3)
             The vector(s) in crystalline coordinates that you want to
@@ -121,13 +121,13 @@ def cryst_to_cart(unit_cell, cryst_vectors):
 
 def cart_to_cryst(unit_cell, cart_vectors):
     """
-    Convert a vector from cartesian to crystalline. 
+    Convert a vector from cartesian to crystalline.
     Many vectors counld be pased toghether, in that case the last axis must be the one with the vector.
 
     Parameters
     ----------
         unit_cell : ndarray((3,3))
-            The unit cell vectors. 
+            The unit cell vectors.
             The i-th cell vector is unit_cell[i, :]
         cart_vectors : ndarray((N_vectors, 3)) or ndarray(3)
             The vector(s) in cartesian coordinates that you want to
@@ -139,7 +139,7 @@ def cart_to_cryst(unit_cell, cart_vectors):
             The vector(s) in crystalline coordinates
     """
     return covariant_coordinates(unit_cell, cart_vectors)
-    
+
 def get_equivalent_vectors(unit_cell, vectors, target, index = None):
     """
     This function returns an array mask of the vectors that are
@@ -153,7 +153,7 @@ def get_equivalent_vectors(unit_cell, vectors, target, index = None):
             The vectors to be compared to the target
         - target : ndarray(size = 3)
             The target vector
-    
+
     Returns
     -------
         - eq_mask : ndarray(size = n_vects, dtype = bool)
@@ -163,7 +163,7 @@ def get_equivalent_vectors(unit_cell, vectors, target, index = None):
 
     # Get the inverse metric tensor
     M, N = np.shape(unit_cell)
-    
+
     metric_tensor = np.zeros((N,N))
     for i in range(0, N):
         for j in range(i, N):
@@ -198,8 +198,8 @@ def get_equivalent_vectors(unit_cell, vectors, target, index = None):
 def get_min_dist_into_cell(unit_cell, v1, v2):
     """
     This function obtain the minimum distance between two vector, considering the given unit cell
-    
-    
+
+
     Parameters
     ----------
         unit_cell : ndarray 3x3
@@ -208,14 +208,14 @@ def get_min_dist_into_cell(unit_cell, v1, v2):
             Vector 1
         v2 : ndarray 3
             Vector 2
-            
+
     Results
     -------
         float
             The minimum distance between the two fector inside the given unit cell
     """
-    
-    
+
+
     # Get the covariant components
     metric_tensor = np.zeros((3,3))
     for i in range(0, 3):
@@ -223,18 +223,18 @@ def get_min_dist_into_cell(unit_cell, v1, v2):
             metric_tensor[i, j] = metric_tensor[j,i] = unit_cell[i,:].dot(unit_cell[j, :])
 
     imt = np.linalg.inv(metric_tensor)
-    
+
     # Get contravariant components
     contra_vect = np.zeros(3)
     for i in range(3):
-        contra_vect[i] = v1.dot(unit_cell[i, :]) 
+        contra_vect[i] = v1.dot(unit_cell[i, :])
 
     # Invert the metric tensor and obtain the covariant coordinates
     covect1 = imt.dot(contra_vect)
-    
+
     contra_vect = np.zeros(3)
     for i in range(3):
-        contra_vect[i] = v2.dot(unit_cell[i, :]) 
+        contra_vect[i] = v2.dot(unit_cell[i, :])
 
     # Invert the metric tensor and obtain the covariant coordinates
     covect2 = imt.dot(contra_vect)
@@ -249,11 +249,11 @@ def get_min_dist_into_cell(unit_cell, v1, v2):
 
 def identify_vector(unit_cell, vector_list, target, epsil = 1e-8):
     """
-    Identify whichone in vector_list is equivalent to the target (given the supercell)    
+    Identify whichone in vector_list is equivalent to the target (given the supercell)
     If no vector is identified, then raise a warning and return None.
 
     This function is much more efficient than calling get_min_dist_into_cell in a loop.
-    
+
     Parameters
     ----------
         unit_cell : ndarray 3x3
@@ -262,13 +262,13 @@ def identify_vector(unit_cell, vector_list, target, epsil = 1e-8):
             The array of vector you want to compare
         target : ndarray 3
             The target vector
-            
+
     Results
     -------
         int
             the index of the vector_list that is equivalent to target (withint the cell)
     """
-    
+
     # Get the covariant components
     metric_tensor = np.zeros((3,3))
     for i in range(0, 3):
@@ -278,7 +278,7 @@ def identify_vector(unit_cell, vector_list, target, epsil = 1e-8):
     imt = np.linalg.inv(metric_tensor)
 
     N_vectors = vector_list.shape[0]
-    
+
     # Get contravariant components
     crystal_list = vector_list.dot(unit_cell.T)
     crystal_list = crystal_list.dot(imt)
@@ -309,30 +309,30 @@ def get_reciprocal_vectors(unit_cell):
     """
     GET THE RECIPROCAL LATTICE VECTORS
     ==================================
-    
+
     Gives back the reciprocal lattice vectors given the
     unit cell.
-    
+
     P.S.
-    The output is in rad / alat^-1 
+    The output is in rad / alat^-1
     where alat is the unit of measurement of the unit_cell.
-    
+
     Parameters
     ----------
         unit_cell : ndarray( size = (3,3), dtype = np.float64)
             The unit cell, rows are the vectors.
-    
+
     Results
     -------
         reciprocal_vectors : ndarray(size = (3,3), dtype = np.float64)
-            The reciprocal lattice vectors 
+            The reciprocal lattice vectors
     """
-    
+
     reciprocal_vectors = np.zeros( (3,3), dtype = np.float64)
     reciprocal_vectors[:,:] = np.transpose(np.linalg.inv(unit_cell))
     return reciprocal_vectors
 
-    
+
 def from_dynmat_to_spectrum(dynmat, struct):
     """
     This method takes as input the dynamical matrix and the atomic structure of the system and
@@ -352,7 +352,7 @@ def from_dynmat_to_spectrum(dynmat, struct):
     """
 
     n_atoms = struct.N_atoms
-    
+
     # Construct the matrix to be diagonalized
     new_phi = np.zeros(np.shape(dynmat))
     for i in range(n_atoms):
@@ -361,15 +361,15 @@ def from_dynmat_to_spectrum(dynmat, struct):
             M_j = struct.masses[struct.atoms[j]]
             new_phi[3*i : 3*(i+1), 3*j : 3*(j+1)] = dynmat[3*i : 3*(i+1), 3*j : 3*(j+1)] / (M_i * M_j)
 
-    
+
     # Diagonalize the matrix
     eigval, eigvect = np.linalg.eig(new_phi)
     eigval *= 220000. # conversion to cm-1
 
     return np.sort(eigval)
-        
 
-        
+
+
 def put_into_cell(cell, vector):
     """
     This function take the given vector and gives as output the corresponding
@@ -407,7 +407,7 @@ def put_into_cell(cell, vector):
     # Get contravariant components
     contra_vect = np.zeros(3)
     for i in range(3):
-        contra_vect[i] = vector.dot(cell[i, :]) 
+        contra_vect[i] = vector.dot(cell[i, :])
 
     # Invert the metric tensor and obta
     covect = np.linalg.inv(metric_tensor).dot(contra_vect)
@@ -421,38 +421,38 @@ def put_into_cell(cell, vector):
     # print "vector:", vector
     # print "contra variant:", contra_vect
     # print "covariant:", covect
-    
+
     for i in range(3):
         covect[i] = covect[i] - int(covect[i])
         if covect[i] < 0:
             covect[i] += 1
 
-    
-    
+
+
     # Go back
     final_vect = np.zeros(3)
     for i in range(3):
         final_vect += covect[i] * cell[i,:]
-        
+
     # print "covariant new:", covect
     # print "final:", final_vect
     # print ""
-    
+
     return final_vect
-    
-    
+
+
 def get_minimal_orthorombic_cell(euclidean_cell, ita=36):
     """
     This function, given an euclidean cell with 90 90 90 angles, returns the minimal
-    cell. The minimal cell will not have 90 90 90 angles. 
-    
+    cell. The minimal cell will not have 90 90 90 angles.
+
     Parameters
     ----------
         - euclidean_cell : matrix 3x3, double precision
               The rows of this matrix are the unit cell vectors in euclidean cell.
         - ita : integer
               The group class in ITA standard (36 = Cmc21)
-    
+
     Results
     -------
         - minimal_cell : matrix 3x3, double precision
@@ -469,7 +469,7 @@ def get_minimal_orthorombic_cell(euclidean_cell, ita=36):
         minimal_cell[1,:] = last_vector
     else:
         raise ValueError("Error on input, ITA = %d not yet implemented." % ita)
-    
+
     return minimal_cell
 
 
@@ -513,7 +513,7 @@ Results
 
     # Get the r axis
     N_bin = int( r_max / float(dr)) + 1
-    r_min = np.linspace(0, r_max, N_bin) 
+    r_min = np.linspace(0, r_max, N_bin)
 
     real_dr = np.mean(np.diff(r_min))
     #print("REAL DR:", real_dr)
@@ -541,16 +541,16 @@ Results
                     #print("nat: {}, indexes: {}, {}".format(struct.N_atoms, first, second))
                     #print("r_vec:", r_vec)
                     if struct.has_unit_cell:
-                        r_vec = get_closest_vector(struct.unit_cell, r_vec) 
+                        r_vec = get_closest_vector(struct.unit_cell, r_vec)
                     #r = struct.get_min_dist(first, second)
                     r = np.sqrt(r_vec.dot(r_vec)) # The modulus
                     index_pos = int( r / real_dr)
                     if index_pos < N_bin:
                         N_r[index_pos] += 1
 
-                
 
-            
+
+
     # Now get the g(r) from N_r
     N_tot = sum(N_r)
     V = 4 * np.pi * r_max**3 / 3.
@@ -562,7 +562,7 @@ Results
     data[:, 0] = real_r
     data[:, 1] = g_r
     return data
-    
+
 
 def get_gr(structures, type1, type2, r_min, r_max, N_r):
     """
@@ -612,19 +612,19 @@ Results
     for i in range(n_structs):
         cells[i, :, :] = structures[i].unit_cell
         coords[i, :, :] = structures[i].coords
-    
 
-    real_r, g_r = symph.get_gr_data(cells, coords, ityp, t1, t2, r_min, r_max, N_r) 
+
+    real_r, g_r = symph.get_gr_data(cells, coords, ityp, t1, t2, r_min, r_max, N_r)
 
     # Get the final data and return
     data = np.zeros((N_r, 2))
     data[:, 0] = real_r
     data[:, 1] = g_r
     return data
-    
-    
-    
-    
+
+
+
+
 def cell2abc_alphabetagamma(unit_cell):
     """
 This methods return a list of 6 elements. The first three are the three lengths a,b,c of the cell, while the other three
@@ -652,8 +652,8 @@ Results
         j = (i + 1) % 3
         k = (i + 2) % 3
         cosangle = unit_cell[j,:].dot(unit_cell[k, :]) / (cell[j] * cell[k])
-        
-        cell[i + 3] = np.arccos(cosangle) * 180 / np.pi 
+
+        cell[i + 3] = np.arccos(cosangle) * 180 / np.pi
 
     return cell
 
@@ -700,7 +700,7 @@ Results
     nat = strc1.N_atoms
     coord1 = np.zeros(nat*3)
     coord2 = np.zeros(nat*3)
-    
+
     if ApplyTrans:
         # Shift both the strcture so that the first atom is in the origin.
         if Ordered:
@@ -721,58 +721,58 @@ def get_unit_cell_from_ibrav(ibrav, celldm):
     """
     OBTAIN THE UNIT CELL WITH QUANTUM ESPRESSO IBRAV
     ================================================
-    
+
     This subroutine reads the quantum espresso variables ibrav and celldm
     and built the unit cell according to them.
-    
-    NOTE: not all the version are still supported, they will be 
+
+    NOTE: not all the version are still supported, they will be
     added as the developing of the code will go on.
-    
-    
+
+
     Look at quantum espresso pw.x input for a clear explanation
     on how they works.
     Note the unit of QE are bohr, so we expect the celldm[0] to be
     written in bohr. However the output cell will be in angstrom.
-    
+
     Parameters
     ----------
         ibrav : int
             This is the ibrav number identification of the cell type.
             Note if it is a float, it will be rounded to the closest integer.
             For example, 1 means simple cubic, 13 is the base-centered monoclinic ...
-        
+
         celldm : ndarray (float, 6)
-            It contains a list of 6 floats that defines the cell axis length and 
+            It contains a list of 6 floats that defines the cell axis length and
             angles. Their precise meaning can be found on quantum-espresso documentation.
             We refer at 6.2.1 version.
-    
+
     Results
     -------
         unit_cell : ndarray (3x3)
             The unit cell in angstrom. the i-th cell vector is unit_cell[i,:]
-            
+
     """
     # Avoid trivial problems if the ibrav is a float
-    ibrav = int(ibrav + .5) 
-    
+    ibrav = int(ibrav + .5)
+
     #SUPPORTED_IBRAV = [13]
-    
+
     # Check if the ibrav is in the supported ibrav
     #if not ibrav in SUPPORTED_IBRAV:
     #    raise ValueError("Error, the specified ibrav %d is not supported." % ibrav)
-        
-    
+
+
     # Check if celldm is of the correct length
     if len(celldm) != 6:
         raise ValueError("Error, celldm shoud be an ndarray of size 6")
-    
+
     # Get the cell
     unit_cell = np.zeros((3,3))
     if ibrav == 1:
         # Simple cubic
         a = celldm[0] * BOHR_TO_ANGSTROM
         unit_cell[0,:] = np.array([1, 0, 0]) * a
-        unit_cell[1,:] = np.array([0, 1, 0]) * a 
+        unit_cell[1,:] = np.array([0, 1, 0]) * a
         unit_cell[2,:] = np.array([0, 0, 1]) * a
     elif ibrav == 2:
         # Cubic fcc
@@ -796,7 +796,7 @@ def get_unit_cell_from_ibrav(ibrav, celldm):
         # Hexagonal
         a = celldm[0] * BOHR_TO_ANGSTROM
         c = celldm[2] * a
-        
+
         unit_cell[0, :] = np.array([1, 0, 0]) * a
         unit_cell[1, :] = np.array([-0.5, np.sqrt(3)/2, 0]) * a
         unit_cell[2, :] = np.array([0, 0, 1]) * c
@@ -824,7 +824,7 @@ def get_unit_cell_from_ibrav(ibrav, celldm):
         # Tetragonal I
         a = celldm[0] * BOHR_TO_ANGSTROM
         c = celldm[2] * a
-        
+
         unit_cell[0, :] = np.array([a*0.5, -a*0.5, c*0.5])
         unit_cell[1, :] = np.array([a*0.5, a*0.5, c*0.5])
         unit_cell[2, :] = np.array([-a*0.5, -a*0.5, c*0.5])
@@ -844,7 +844,7 @@ def get_unit_cell_from_ibrav(ibrav, celldm):
         a = celldm[0] * BOHR_TO_ANGSTROM
         b = celldm[1] * a
         c = celldm[2] * a
-        
+
         unit_cell[0, :] = np.array([a/2, b/2, 0])
         unit_cell[1, :] = np.array([-a/2, b/2, 0])
         unit_cell[2, :] = np.array([0, 0, c])
@@ -853,7 +853,7 @@ def get_unit_cell_from_ibrav(ibrav, celldm):
         a = celldm[0] * BOHR_TO_ANGSTROM
         b = celldm[1] * a
         c = celldm[2] * a
-        
+
         unit_cell[0, :] = np.array([-a/2, b/2, 0])
         unit_cell[1, :] = np.array([a/2, b/2, 0])
         unit_cell[2, :] = np.array([0, 0, c])
@@ -870,14 +870,14 @@ def get_unit_cell_from_ibrav(ibrav, celldm):
         unit_cell[2,:] = np.array([0, b/2, c/2])
     elif ibrav == 13:
         # Monoclinic base-centered
-        
+
         # Create cell
         a = celldm[0] * BOHR_TO_ANGSTROM
         b = a * celldm[1]
         c = a * celldm[2]
         cos_ab = celldm[3]
         sin_ab = np.sqrt(1 - cos_ab**2)
-        
+
         unit_cell[0,:] = np.array( [a/2., 0, -c/2.])
         unit_cell[1,:] = np.array( [b * cos_ab, b*sin_ab, 0])
         unit_cell[2,:] = np.array( [a/2., 0, c/2.])
@@ -896,9 +896,9 @@ def get_unit_cell_from_ibrav(ibrav, celldm):
 
         unit_cell[0, :] = np.array([a, 0, 0], dtype = np.double)
         unit_cell[1, :] = np.array([b * cos_gamma, b * sin_gamma, 0], dtype = np.double)
-        unit_cell[2, :] = np.array([c * cos_beta, c * (cos_alpha - cos_beta * cos_gamma) / sin_gamma, 
+        unit_cell[2, :] = np.array([c * cos_beta, c * (cos_alpha - cos_beta * cos_gamma) / sin_gamma,
             c * np.sqrt( 1 + 2*cos_alpha*cos_beta*cos_gamma - cos_alpha**2 - cos_beta**2 - cos_gamma**2) / sin_gamma])
-        
+
     else:
         raise ValueError("Error, the specified ibrav %d is not supported." % ibrav)
 
@@ -912,12 +912,12 @@ def is_inside(index, indices):
     """
     if len(indices) == 0:
         return False
-    
+
     a = np.array(indices, dtype = int)
-    
+
     new_a = (index > a).astype(int)
     result = np.sum(new_a)
-    
+
     if result % 2 == 0:
         return False
     return True
@@ -926,53 +926,53 @@ def read_namelist(line_list):
     """
     READ NAMELIST
     =============
-    
-    
+
+
     This function will read the quantum espresso namelist format from a list of lines.
     The info are returned in a dictionary:
-        
+
         &control
             type_cal = "wrong"
             ecutrho = 140
         &end
-    
+
     will be converted in a python dictionary
         dict = {"control" : {"type_cal" : "wrong", "ecutrho" : 140}}
-    
+
     Then the dictionary is returned. Comments must start as in fortran with the '!'
-    
+
     NOTE: Fotran is not case sensitive, therefore all the keys are converted in lower case
-    
-    
-    
+
+
+
     Parameters
     ----------
         line_list : list or string (path)
             A list of lines read in a file. They should be the row output of f.readlines() function
             where f is a file obtained as f = open("something", "r"). You can also directly pass
             a string to path
-    
+
     Returns
     -------
         dict :
             The dictionary of the namelist
     """
-    
+
     if isinstance(line_list, str):
         if not os.path.exists(line_list):
             raise IOError("Error, file %s not found." % line_list)
-        
+
         # Read the file
         fread = open(line_list, "r")
         line_list = fread.readlines()
         fread.close()
-    
-    
+
+
     inside_namespace = False
     current_namespace = ""
     namespace = {}
     total_dict = {}
-    
+
     # Start reading
     for line in line_list:
         # Avoid case sensitivity turning everithing in lower case
@@ -986,46 +986,46 @@ def read_namelist(line_list):
                 quotes_indices.append(last_found)
             else:
                 break
-        
-        
-            
-        
+
+
+
+
         # Delete the line after the comment
         # If it is not inside double quotes
         if not is_inside(line.find("!"), quotes_indices):
             # Delete the comment
             line = line[:line.find("!")]
-                
+
         # Clear the line of tailoring white spaces
         line = line.strip()
-        
+
         # Skip if the line is white
         if len(line) == 0:
             continue
-        
+
         # Check if the line begins with an "&" sign
         if line[0] == "&":
             # Check if we are closing an existing namespace
             if line[1:].lower() == "end":
                 if not inside_namespace:
                     raise IOError("Error, trying to close a namespace without having open it.")
-                
+
                 total_dict[current_namespace] = namespace.copy()
                 current_namespace = ""
                 inside_namespace = False
                 namespace.clear()
-                
+
                 continue
-            
+
             # New namelist ---
-            
+
             # Check if we already are inside a namespace
             if inside_namespace:
                 raise IOError("Error, the namespace %s has not been closed." % current_namespace)
-            
+
             current_namespace = line[1:].lower()
             inside_namespace = True
-            
+
             # Check if the namespace has a valid name
             if len(current_namespace) == 0:
                 raise IOError("Error, non valid name for a namespace")
@@ -1034,7 +1034,7 @@ def read_namelist(line_list):
             if line[0] == "/":
                 if not inside_namespace:
                     raise IOError("Error, trying to close a namespace without having open it.")
-                
+
                 total_dict[current_namespace] = namespace.copy()
                 current_namespace = ""
                 inside_namespace = False
@@ -1042,34 +1042,34 @@ def read_namelist(line_list):
                 continue
 
             if inside_namespace:
-                
+
                 # First of all split for quotes
                 value = None
                 new_list_trial = line.split('"')
                 if len(new_list_trial) == 3:
                     value = '"' + new_list_trial[1] + '"'
-                else:                
+                else:
                     new_list_trial = line.split("'")
                     if len(new_list_trial) == 3:
                         value = '"' + new_list_trial[1] + '"'
-                
+
                 # Get the name of the variable
                 new_list = line.split("=")
-                
+
                 if len(new_list) != 2 and value is None:
                     raise IOError("Error, I do not understand the line %s" % line)
                 elif len(new_list) < 2:
                     raise IOError("Error, I do not understand the line %s" % line)
-                    
+
                 variable = new_list[0].strip().lower()
                 if value is None:
                     value = new_list[1].strip()
-                
+
                 # Remove ending comma and otehr tailoring space
                 if value[-1] == ",":
                     value = value[:-1].strip()
-                
-                
+
+
                 # Convert fortran bool
                 if value.lower() == ".true.":
                     value = True
@@ -1096,32 +1096,32 @@ def read_namelist(line_list):
     # The file has been analyzed
     if inside_namespace:
         raise IOError("Error, file endend before %s was closed" % current_namespace)
-    
+
     return total_dict
-            
-        
-        
-        
-        
+
+
+
+
+
 def write_namelist(total_dict):
     """
     WRITE ESPRESSO NAMELIST
     =======================
-    
+
     Given a particular dictionary this subroutine will transform it into an espresso dictionary
-    
+
     Parameters
     ----------
         total_dict : dict
             A dictionary of the namespaces in the namelist
-    
+
     Results
     -------
         list
             A list of lines that can be written into a file
     """
-        
-    
+
+
     lines = []
     keys = list(total_dict)
     new_keys = []
@@ -1150,10 +1150,10 @@ def write_namelist(total_dict):
                     valuestr = ".{}.".format(str(value).lower())
                 else:
                     valuestr = str(value)
-            
+
                 line = "\t%s = %s\n" % (key2, valuestr)
                 lines.append(line)
-                
+
             lines.append("&end\n")
         else:
             value = total_dict[key]
@@ -1162,15 +1162,15 @@ def write_namelist(total_dict):
                 valuestr = " ".join(value)
             else:
                 valuestr = str(value)
-        
+
             line = "\t%s = %s\n" % (key, valuestr)
             lines.append(line)
-                
-            
+
+
     return lines
-                
-    
-    
+
+
+
 def get_translations(pols, masses):
     """
     GET TRANSLATIONS
@@ -1184,7 +1184,7 @@ def get_translations(pols, masses):
         pols : ndarray 2 rank
             The polarization vectors as they came out from DyagDinQ(0) method from Phonons.
         masses : ndarray (size nat)
-            The mass of each atom. 
+            The mass of each atom.
 
     Returns
     -------
@@ -1196,16 +1196,16 @@ def get_translations(pols, masses):
     -------
 
     In this example starting from the frequencies, the translations are removed (let dyn to be Phonons()):
-    
+
     >>> w, pols = dyn.DyagDinQ(0)
     >>> t_mask = get_translations(pols)
     >>> w_without_trans = w[ ~t_mask ]
-    
+
     The same, of course, can be applied to polarization vectors:
 
     >>> pols = pols[ :, ~t_mask ]
 
-    The ~ caracter is used to get the bit not operation over the t_mask array (to mark False the translational modes and True all the others) 
+    The ~ caracter is used to get the bit not operation over the t_mask array (to mark False the translational modes and True all the others)
     """
     n_atoms = len(pols[:, 0]) // 3
     n_pols = len(pols[0,:])
@@ -1225,9 +1225,9 @@ def get_translations(pols, masses):
 
 def _get_translations(pols, masses):
     """
-    OLD slow implemetation of get_translations 
+    OLD slow implemetation of get_translations
     """
-    
+
     # Check if the masses array is good
     if len(masses) * 3 != np.size(pols[:,0]):
         raise ValueError("Error, the size of the two array masses and pols are not compatible.")
@@ -1244,43 +1244,43 @@ def _get_translations(pols, masses):
         # Check if the polarization vector is oriented in the same way for each atom
         thr_val = 0
         for j in range(n_atoms):
-            thr_val += np.sum( np.abs(pols[3 * j : 3 * j + 3, i]/np.sqrt(masses[j]) - 
+            thr_val += np.sum( np.abs(pols[3 * j : 3 * j + 3, i]/np.sqrt(masses[j]) -
                                       pols[:3, i] / np.sqrt(masses[0]))**2)
 
         thr_val = np.sqrt(thr_val)
-            
+
         if thr_val < __EPSILON__ :
             is_translation[i] = True
 
     return is_translation
 
 
-            
+
 def convert_matrix_cart_cryst(matrix, unit_cell, cryst_to_cart = False):
     """
     This methods convert the 3x3 matrix into crystalline coordinates using the metric tensor defined by the unit_cell.
 
-    This method is a specular implementation of Quantum ESPRESSO. 
+    This method is a specular implementation of Quantum ESPRESSO.
     This subroutine transforms matrices obtained as open product between vectors.
     If you want to transform a linear operator, then use
     convert_matrix_cart_cryst2
 
-    For example, use this to transform a dynamical matrix, 
+    For example, use this to transform a dynamical matrix,
     use convert_matrix_cart_cryst2 to transform a symmetry operation.
-    
+
     .. math::
-        
+
         g_{\\alpha\\beta} = \\left< \\vec v_\\alpha | \\vec v_\\beta\\right>
-        
+
         F_{\\alpha\\beta} = g_{\\alpha\\gamma} g_{\\beta\\delta} F^{\\gamma\\delta}
-        
+
         F^{\\alpha\\beta} = g^{\\alpha\\gamma} g^{\\beta\\delta} F_{\\gamma\\delta}
-        
+
         F_{\\alpha\\beta} = \\frac{\\partial E}{\\partial u^\\alpha \\partial u^\\beta}
-        
+
         F^{\\alpha\\beta} = \\frac{\\partial E}{\\partial u_\\alpha \\partial u_\\beta}
-    
-        
+
+
     Parameters
     ----------
         matrix : ndarray 3x3
@@ -1290,14 +1290,14 @@ def convert_matrix_cart_cryst(matrix, unit_cell, cryst_to_cart = False):
         cryst_to_cart : bool, optional
             If False (default) the matrix is assumed in cartesian coordinates and converted to crystalline. If True
             otherwise.
-            
+
     Results
     -------
         new_matrix : ndarray(3x3)
             The converted matrix into the desidered format
     """
-    
-    
+
+
     # Get the metric tensor from the unit_cell
     metric_tensor = np.zeros((3,3))
     for i in range(0, 3):
@@ -1305,29 +1305,29 @@ def convert_matrix_cart_cryst(matrix, unit_cell, cryst_to_cart = False):
             metric_tensor[i, j] = metric_tensor[j,i] = unit_cell[i,:].dot(unit_cell[j, :])
 
     # Choose which conversion perform
-    comp_matrix = np.einsum("ij, jk", np.linalg.inv(metric_tensor), unit_cell) 
+    comp_matrix = np.einsum("ij, jk", np.linalg.inv(metric_tensor), unit_cell)
     comp_matrix_inv = np.linalg.inv(comp_matrix)
-        
+
     if cryst_to_cart:
         return comp_matrix.T.dot( np.dot(matrix, comp_matrix))
 
     return comp_matrix_inv.T.dot( np.dot(matrix, comp_matrix_inv))
-    
+
 def convert_matrix_cart_cryst2(matrix, unit_cell, cryst_to_cart = False):
     """
     This methods convert the 3x3 matrix into crystalline coordinates using the metric tensor defined by the unit_cell.
 
-    This perform the exact transform. 
-    With this method you get a matrix that performs the transformation directly in the other space. 
+    This perform the exact transform.
+    With this method you get a matrix that performs the transformation directly in the other space.
     If I have a matrix that transforms vectors in crystalline coordinates, then with this I get the same operator between
     vectors in cartesian space.
-    
+
     This subroutine transforms operators, while the previous one transforms matrices (obtained as open product between vectors)
-    
-    For example, use convert_matrix_cart_cryst to transform a dynamical matrix, 
+
+    For example, use convert_matrix_cart_cryst to transform a dynamical matrix,
     use convert_matrix_cart_cryst2 to transform a symmetry operation.
-    
-        
+
+
     Parameters
     ----------
         matrix : ndarray 3x3
@@ -1337,14 +1337,14 @@ def convert_matrix_cart_cryst2(matrix, unit_cell, cryst_to_cart = False):
         cryst_to_cart : bool, optional
             If False (default) the matrix is assumed in cartesian coordinates and converted to crystalline. If True
             otherwise.
-            
+
     Results
     -------
         new_matrix : ndarray(3x3)
             The converted matrix into the desidered format
     """
-    
-    
+
+
     # Get the metric tensor from the unit_cell
     metric_tensor = np.zeros((3,3))
     for i in range(0, 3):
@@ -1352,15 +1352,15 @@ def convert_matrix_cart_cryst2(matrix, unit_cell, cryst_to_cart = False):
             metric_tensor[i, j] = metric_tensor[j,i] = unit_cell[i,:].dot(unit_cell[j, :])
 
     # Choose which conversion perform
-    comp_matrix = np.einsum("ij, jk", np.linalg.inv(metric_tensor), unit_cell) 
+    comp_matrix = np.einsum("ij, jk", np.linalg.inv(metric_tensor), unit_cell)
     comp_matrix_inv = np.linalg.inv(comp_matrix)
-        
+
     if cryst_to_cart:
         return comp_matrix_inv.dot( np.dot(matrix, comp_matrix))
 
     return comp_matrix.dot( np.dot(matrix, comp_matrix_inv))
-        
-        
+
+
 def convert_3tensor_to_cryst(tensor, unit_cell, cryst_to_cart = False):
     """
     Convert to crystal coordinates
@@ -1378,24 +1378,24 @@ def convert_3tensor_to_cryst(tensor, unit_cell, cryst_to_cart = False):
         cryst_to_cart : bool
             If true, reverse convert crystal to cartesian.
     """
-    
+
     # Get the metric tensor from the unit_cell
     metric_tensor = np.zeros((3,3))
     for i in range(0, 3):
         for j in range(i, 3):
             metric_tensor[i, j] = metric_tensor[j,i] = unit_cell[i,:].dot(unit_cell[j, :])
 
-    comp_matrix = np.einsum("ij, jk", np.linalg.inv(metric_tensor), unit_cell) 
+    comp_matrix = np.einsum("ij, jk", np.linalg.inv(metric_tensor), unit_cell)
     if not cryst_to_cart:
         comp_matrix = np.linalg.inv(comp_matrix)
 
     return np.einsum("ia, jb, kc, ijk -> abc", comp_matrix, comp_matrix, comp_matrix, tensor)
-        
+
 def convert_fc(fc_matrix, unit_cell, cryst_to_cart = False):
     """
     This method converts the force constant matrix from cartesian to crystal and the opposite.
     Check the method convert_matrix_cart_cryst to see more details.
-    
+
     Parameters
     ----------
         fc_matrix : ndarray (3 nat x 3 nat)
@@ -1404,43 +1404,43 @@ def convert_fc(fc_matrix, unit_cell, cryst_to_cart = False):
             The unit cell of the system
         cryst_to_cart : bool, optional, default False
             If true convert from crystal to cartesian, the opposite otherwise.
-            
+
     Results
     -------
         new_fc_matrix : ndarray (shape(fc_matrix))
             The new force constant matrix after the conversion.
     """
-    
+
     # Check if the fc_matrix is a good candidate
     if np.shape(fc_matrix)[0] != np.shape(fc_matrix)[1]:
         raise ValueError("Error, the force constant matrix must be a square array")
-    
+
     if len(np.shape(fc_matrix)) != 2:
         raise ValueError("Error, the fc_matrix must be a matrix.")
-    
+
     n_indices = np.shape(fc_matrix)[0]
-    
+
     if n_indices %3 != 0:
         raise ValueError("Error, the size of the force constant matrix must be a multiple of 3")
-        
+
     # Get the number of atoms
     nat = n_indices / 3
-    
+
     # Prepare the output matrix
     new_fc_matrix = np.zeros(np.shape(fc_matrix))
     for na in range(nat):
         for nb in range(na, nat):
             # Convert the single matrix
-            in_mat = fc_matrix[3 * na : 3*(na+1), 3*nb : 3*(nb+1)] 
+            in_mat = fc_matrix[3 * na : 3*(na+1), 3*nb : 3*(nb+1)]
             out_mat = convert_matrix_cart_cryst(in_mat, unit_cell, cryst_to_cart)
             new_fc_matrix[3 * na : 3*(na+1), 3*nb : 3*(nb+1)] = out_mat
-            
+
             # Apply hermitianity
             if na != nb:
                 new_fc_matrix[3 * nb : 3*(nb+1), 3*na : 3*(na+1)] = np.conjugate(out_mat.transpose())
-            
+
     return new_fc_matrix
-        
+
 
 def get_directed_nn(structure, atom_id, direction):
     """
@@ -1450,7 +1450,7 @@ def get_directed_nn(structure, atom_id, direction):
 
     The algorithm selects a cone around the atom oriented to the direction, and selects
     the first atom in the structure inside the cone (the one with lowest projection on the cone axis)
-    
+
     The method returns -1 if no near neighbour along the specified direction is detected
     """
 
@@ -1465,13 +1465,13 @@ def get_directed_nn(structure, atom_id, direction):
         new_coords[:,:] += 0.5 * np.sum(structure.unit_cell, axis = 0)
         for i in range(nat):
             new_coords[i, :] = put_into_cell(structure.unit_cell, new_coords[i, :])
-        
+
         # Shift back
         new_coords -= new_coords[atom_id, :]
 
 
 
-    
+
     # Pop the atoms not in the cone
     versor_cone = direction / np.sqrt(direction.dot(direction))
 
@@ -1491,7 +1491,7 @@ def get_directed_nn(structure, atom_id, direction):
             if r < p_cone[i]:
                 good_atoms.append(i)
                 good_d.append(r**2 + p_cone[i]**2)
-    
+
     #print good_atoms
 
     if len(good_atoms) == 0:
@@ -1523,12 +1523,12 @@ def get_closest_vector(unit_cell, v_dist):
     # Define the metric tensor
     g = unit_cell.dot(unit_cell.T)
     alphas = covariant_coordinates(unit_cell, v_dist)
-    
+
     # Define the minimum function
     def min_f(n):
         tmp = g.dot(2 * alphas + n)
         return n.dot(tmp)
-    
+
     # Get the starting guess for the vector
     n_start = -np.floor(alphas + .5)
     n_min = n_start.copy()
@@ -1541,9 +1541,9 @@ def get_closest_vector(unit_cell, v_dist):
                 n_v = n_start + np.array([n_x, n_y, n_z])
                 new_min = min_f(n_v)
                 if new_min < tot_min:
-                    tot_min = new_min 
+                    tot_min = new_min
                     n_min = n_v
-    
+
     # Get the new vector
     new_v = v_dist + n_min.dot(unit_cell)
     return new_v
@@ -1551,9 +1551,9 @@ def get_closest_vector(unit_cell, v_dist):
 def three_to_one_len(v,v_min,v_len):
     """
     This subroutine converts a triplet index v,
-    of length v_len and starting from v_min, 
+    of length v_len and starting from v_min,
     into a single progressive index starting from 0
-    """    
+    """
     res=(v[0]-v_min[0])*v_len[1]*v_len[2]+(v[1]-v_min[1])*v_len[2]+(v[2]-v_min[2])
     return int(res)
 
@@ -1562,7 +1562,7 @@ def three_to_one(v,v_min,v_max):
     This subroutine converts a triplet index v,
     going from v_min to v_max, into a single progressive
     index starting from 0
-    """    
+    """
     v_len=np.array(v_max)-np.array(v_min)+np.ones(3,dtype=int)
     res=(v[0]-v_min[0])*v_len[1]*v_len[2]+(v[1]-v_min[1])*v_len[2]+(v[2]-v_min[2])
     return int(res)
@@ -1575,72 +1575,72 @@ def one_to_three_len(J,v_min,v_len):
     """
     x              =   J // (v_len[2] * v_len[1])              + v_min[0]
     y              = ( J %  (v_len[2] * v_len[1])) // v_len[2] + v_min[1]
-    z              =   J %   v_len[2]                          + v_min[2]   
-    return np.array([x,y,z],dtype=int) 
+    z              =   J %   v_len[2]                          + v_min[2]
+    return np.array([x,y,z],dtype=int)
 
 def one_to_three(J,v_min,v_max):
     """
     This subroutine coonverts a single progressive
     index J starting from 0, to a triplet of progressive
     indexes going from v_min to v_max
-    """        
-    v_len=np.array(v_max)-np.array(v_min)+np.ones(3,dtype=int)    
+    """
+    v_len=np.array(v_max)-np.array(v_min)+np.ones(3,dtype=int)
     x              =   J // (v_len[2] * v_len[1])              + v_min[0]
     y              = ( J %  (v_len[2] * v_len[1])) // v_len[2] + v_min[1]
-    z              =   J %   v_len[2]                          + v_min[2]   
-    return np.array([x,y,z],dtype=int) 
+    z              =   J %   v_len[2]                          + v_min[2]
+    return np.array([x,y,z],dtype=int)
 
 
 
 def is_gamma(unit_cell, q):
     """
-    Defines if the q point in cartesian (A^-1) is gamma or not 
+    Defines if the q point in cartesian (A^-1) is gamma or not
     given the unit cell
-    
+
     Parameters
     ----------
         unit_cell : ndarray (size =3,3)
             The unit cell of the structure
         q : ndarray(size=3)
             The q point that you want to check
-    
+
     Results
     -------
         is_gamma : bool
     """
-    
+
     bg = get_reciprocal_vectors(unit_cell)
     new_q = get_closest_vector(bg, q)
-        
+
     return (np.abs(new_q) < 1e-6).all()
 
-    
+
 def save_qe(dyn,q,dynq,freqs, pol_vects,fname):
         """
         SAVE THE DYNMAT
         ===============
-        
+
         This subroutine saves the dynamical matrix in the quantum espresso file format.
         The dynmat is the force constant matrix in Ry units.
-        
+
         .. math::
-            
+
             \\Phi_{ab} = \\sum_\\mu \\omega_\\mu^2 e_\\mu^a e_\\mu^b \\sqrt{M_a M_b}
-            
+
         Where :math:`\\Phi_{ab}` is the force constant matrix between the a-b atoms (also cartesian
         indices), :math:`\\omega_\\mu` is the phonon frequency and :math:`e_\\mu` is the
         polarization vector.
         """
-        
+
         A_TO_BOHR = 1.889725989
         RyToCm=109737.37595
         RyToTHz=3289.84377
-        
+
 
         # Open the file
         fp = open(fname, "w")
         fp.write("Dynamical matrix file\n")
-        
+
         # Get the different number of types
         types = []
         n_atoms = dyn.structure.N_atoms
@@ -1653,30 +1653,30 @@ def save_qe(dyn,q,dynq,freqs, pol_vects,fname):
         itau = {}
         for i in range(n_types):
             itau[types[i]] = i +1
-        
+
         # Write the comment line
         fp.write("File generated with CellConstructor\n")
         fp.write("%d %d %d %22.16f %22.16f %22.16f %22.16f %22.16f %22.16f\n" %
                  (n_types, n_atoms, 0, dyn.alat * A_TO_BOHR, 0, 0, 0, 0, 0) )
-        
+
         # Write the basis vector
         fp.write("Basis vectors\n")
         # Get the unit cell
         for i in range(3):
             fp.write(" ".join("%22.16f" % x for x in dyn.structure.unit_cell[i,:] / dyn.alat) + "\n")
-        
+
         # Set the atom types and masses
         for i in range(n_types):
             fp.write("\t{:d}  '{:<3s}'  {:>24.16f}\n".format(i +1, types[i], dyn.structure.masses[types[i]]))
-        
+
         # Setup the atomic structure
         for i in range(n_atoms):
             # Convert the coordinates in alat
             coords = dyn.structure.coords[i,:] / dyn.alat
             fp.write("%5d %5d %22.16f %22.16f %22.16f\n" %
-                     (i +1, itau[dyn.structure.atoms[i]], 
+                     (i +1, itau[dyn.structure.atoms[i]],
                       coords[0], coords[1], coords[2]))
-        
+
         # Here the dynamical matrix starts
         fp.write("\n")
         fp.write("     Dynamical Matrix in cartesian axes\n")
@@ -1684,7 +1684,7 @@ def save_qe(dyn,q,dynq,freqs, pol_vects,fname):
         fp.write("     q = (    {:11.9f}   {:11.9f}   {:11.9f} )\n".format(q[0] * dyn.alat ,
                                                                            q[1] * dyn.alat, q[2] * dyn.alat ))
         fp.write("\n")
-        
+
         # Now print the dynamical matrix
         for i in range(n_atoms):
             for j in range(n_atoms):
@@ -1692,15 +1692,15 @@ def save_qe(dyn,q,dynq,freqs, pol_vects,fname):
                 fp.write("%5d%5d\n" % (i + 1, j + 1))
                 for x in range(3):
                     line = "%23.16f%23.16f   %23.16f%23.16f   %23.16f%23.16f" % \
-                           ( np.real(dynq[3*i + x, 3*j]), 
+                           ( np.real(dynq[3*i + x, 3*j]),
                              np.imag(dynq[3*i + x, 3*j]),
                              np.real(dynq[3*i + x, 3*j+1]),
                              np.imag(dynq[3*i+x, 3*j+1]),
                              np.real(dynq[3*i + x, 3*j+2]),
                              np.imag(dynq[3*i+x, 3*j+2]) )
-        
+
                     fp.write(line +  "\n")
-        
+
         # Print the diagnoalization of the matrix
         fp.write("\n")
         fp.write("     Diagonalizing the dynamical matrix\n")
@@ -1709,13 +1709,13 @@ def save_qe(dyn,q,dynq,freqs, pol_vects,fname):
                                                                            q[1] *dyn.alat, q[2] *dyn.alat))
         fp.write("\n")
         fp.write("*" * 75 + "\n")
-        
+
         nmodes = len(freqs)
         for mu in range(nmodes):
             # Print the frequency
             fp.write("%7s (%5d) = %14.8f [THz] = %14.8f [cm-1]\n" %
                      ("freq", mu+1, freqs[mu] * RyToTHz, freqs[mu] * RyToCm))
-            
+
             # Print the polarization vectors
             for i in range(n_atoms):
                 fp.write("( %10.6f%10.6f %10.6f%10.6f %10.6f%10.6f )\n" %
@@ -1723,7 +1723,7 @@ def save_qe(dyn,q,dynq,freqs, pol_vects,fname):
                           np.real(pol_vects[3*i+1, mu]), np.imag(pol_vects[3*i+1,mu]),
                           np.real(pol_vects[3*i+2, mu]), np.imag(pol_vects[3*i+1,mu])))
         fp.write("*" * 75 + "\n")
-        fp.close()    
+        fp.close()
 
 def transform_voigt(tensor, voigt_to_mat = False):
     """
@@ -1750,9 +1750,9 @@ def transform_voigt(tensor, voigt_to_mat = False):
         new_tensor[3] = tensor[1,2]
         new_tensor[4] = tensor[0,2]
         new_tensor[5] = tensor[0,1]
-    
+
     return new_tensor
-    
+
 
 def get_bandpath(unit_cell, path_string, special_points, n_points = 1000):
     """
@@ -1779,14 +1779,14 @@ def get_bandpath(unit_cell, path_string, special_points, n_points = 1000):
     -------
         qpath : ndarray(sizeof=(n_points, 3))
             The q path in cartesian coordinates
-        (xaxis, xticks, xlabels) : 
+        (xaxis, xticks, xlabels) :
             The xaxis that represent the lenght of the qpath from the first point.
-            xlabels is the labels of each ticks and xticks 
+            xlabels is the labels of each ticks and xticks
 
     """
 
     # Get the reciprocal lattice
-    bg = get_reciprocal_vectors(unit_cell) 
+    bg = get_reciprocal_vectors(unit_cell)
 
 
     new_special_points = {x : np.array(special_points[x], dtype = np.double).dot(bg) for x in special_points}
@@ -1820,7 +1820,7 @@ def get_bandpath(unit_cell, path_string, special_points, n_points = 1000):
     counter = 0
     visited = []
     for i in range(1, n_points):
-        
+
         # Identify in which line it is
         xval = xaxis[i]
         index = 0
@@ -1880,7 +1880,7 @@ def get_generic_covariant_coefficients(v, space, thr = 0.05):
     if space.shape[0] == space.shape[1]:
         x = np.linalg.solve(space, v)
         return x
-    
+
     # Solve the minimization problem
     def function_to_minimize(x):
         res = v - x.dot(space)
@@ -1888,14 +1888,14 @@ def get_generic_covariant_coefficients(v, space, thr = 0.05):
 
     def gradient(x):
         return -2*(v - x.dot(space)).dot(space.T)
-    
+
     # Solve the minimization problem
-    res = scipy.optimize.minimize(function_to_minimize, 
-        x_start, 
-        jac = gradient, 
+    res = scipy.optimize.minimize(function_to_minimize,
+        x_start,
+        jac = gradient,
         method = "BFGS",
         options = {'disp' : False})
-    
+
     # Check if the solution is correct
     if res.success:
         if np.linalg.norm(res.x.dot(space) - v) > thr:
@@ -2018,7 +2018,7 @@ def sscha_phonons_from_phonopy(phonon):
     q_grid[gamma_index] = q_grid[0].copy()
     q_grid[0] = np.zeros(3, dtype = np.double)
     dyn = Phonons.Phonons(sscha_structure, len(q_grid))
-    dyn.q_tot = q_grid 
+    dyn.q_tot = q_grid
 
     if(len(phonon.force_constants) == nat_sc):
         fc2 = phonon.force_constants.copy()/RY_TO_EV*BOHR_TO_ANGSTROM**2
@@ -2040,9 +2040,9 @@ def sscha_phonons_from_phonopy(phonon):
     return dyn
 
 
-# Get ForceTensor.Tensor3 from Phono3py object 
+# Get ForceTensor.Tensor3 from Phono3py object
 def phonopy_fc3_to_tensor3(tc, apply_symmetries = True):
-    
+
     if(not __PHONOPY):
         raise RuntimeError('Phonopy and phono3py are needed for this routine!')
     unitcell = get_sscha_structure_from_phonopy(tc.primitive)
