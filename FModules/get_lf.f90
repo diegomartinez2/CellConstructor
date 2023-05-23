@@ -14,7 +14,7 @@ module get_lf
         integer, parameter :: DP = selected_real_kind(14,200)
         real(kind=DP), parameter :: PI = 3.141592653589793115997963468544185161590576171875
 
-        integer, intent(in) :: nirrqpt, nat, nqpt, nfc2, nfc3, ne, n_events
+        integer, intent(in) :: nirrqpt, nat, nfc2, nfc3, ne, n_events
         integer, intent(in) :: weights(n_events), scatt_events(nirrqpt)
         real(kind=DP), intent(in) :: irrqgrid(3, nirrqpt)
         real(kind=DP), intent(in) :: qgrid(3, n_events)
