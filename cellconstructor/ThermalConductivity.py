@@ -873,7 +873,7 @@ class ThermalConductivity:
 
         self.force_constants = self.fc2.tensor.copy()
         self.ruc = self.fc2.r_vector2.T
-        invcell = np.linalg.inv(self.supercell)
+        #invcell = np.linalg.inv(self.supercell)      #maybe later put it as self.invcell if the inverse of the cell is more used
 
 
    ###################################################################################################################################
@@ -1557,7 +1557,7 @@ class ThermalConductivity:
                                 i2 = np.append(np.append(np.flip(self.lineshapes[ls_key][iqpt, iband]/(exponents_minus - 1.0)), np.zeros(1, dtype=float)), self.lineshapes[ls_key][iqpt, iband]/(exponents_plus - 1.0))
                                 integrals = np.correlate(i2, i1, mode = 'full')[len(i1)-1:len(i1) + ne]*self.delta_omega
                                 i3 = np.append(np.append(np.flip(energies), np.zeros(1, dtype=float)), energies)
-                                i4 = np.divide(i2, i3, out=np.zeros_like(i2), where=i3!=0.0)
+                                #i4 = np.divide(i2, i3, out=np.zeros_like(i2), where=i3!=0.0)
                                 integrals += np.append(np.zeros(1, dtype=float), energies)*np.correlate(i2, i1, mode = 'full')[len(i1) - 1:len(i1) + ne ]*self.delta_omega*0.5
                                 #integrands_plus = self.lineshapes[ls_key][iqpt, iband]**2*exponents_plus/(exponents_plus - 1.0)**2
                                 #integrands_minus = self.lineshapes[ls_key][iqpt, iband]**2*exponents_minus/(exponents_minus - 1.0)**2
@@ -2906,7 +2906,7 @@ class ThermalConductivity:
 
         uc_positions = self.dyn.structure.coords.copy()
 
-        is_q_gamma = CC.Methods.is_gamma(self.fc2.unitcell_structure.unit_cell, q)
+        #is_q_gamma = CC.Methods.is_gamma(self.fc2.unitcell_structure.unit_cell, q)    #not used for now
         if(self.off_diag):
             gvel = np.zeros((self.nband, self.nband, 3), dtype = complex)
         else:
@@ -3047,7 +3047,7 @@ class ThermalConductivity:
 
         """
 
-        is_q_gamma = CC.Methods.is_gamma(self.fc2.unitcell_structure.unit_cell, q)
+        #is_q_gamma = CC.Methods.is_gamma(self.fc2.unitcell_structure.unit_cell, q)      #unused for now
         if(self.off_diag):
             tmp_gvel = np.zeros((self.nband, self.nband, 3))
             gvel = np.zeros((self.nband, self.nband, 3))
@@ -3779,7 +3779,7 @@ class ThermalConductivity:
         # Allocate the memory for the bubble
         ne=energies.shape[0]
         nat=structure.N_atoms
-        tmp_bubble = np.zeros((ne,self.nband), dtype = np.complex128, order = "F")
+        #tmp_bubble = np.zeros((ne,self.nband), dtype = np.complex128, order = "F")    #tmp_bubble is in the compute_k function bellow
 
         def compute_k(k):
             # phi3 in q, k, -q - k
