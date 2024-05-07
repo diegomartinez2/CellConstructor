@@ -21,9 +21,9 @@ import cellconstructor.Methods as Methods
 import cellconstructor.symmetries as symmetries
 import cellconstructor.Spectral
 from cellconstructor.Units import A_TO_BOHR, BOHR_TO_ANGSTROM, RY_TO_CM, ELECTRON_MASS_UMA, MASS_RY_TO_UMA, HBAR, K_B, RY_TO_EV
-import spglib
-from scipy import stats
-import warnings
+#import spglib
+#from scipy import stats
+#import warnings
 
 import time
 
@@ -358,7 +358,7 @@ def centering_fc3(tensor3, check_for_symmetries = True, Far = 1):
         for jat in range(len(unique_symbols)):
             if(symbols[iat] == unique_symbols[jat]):
                 numbers[iat] = unique_numbers[jat]
-    cell = (rprim, xpos, numbers)
+#    cell = (rprim, xpos, numbers)
     if(tensor3.n_R == tensor3.n_sup**2):
         print('ForceTensor most likely not previously centered! ')
         if(check_for_symmetries):
@@ -614,7 +614,7 @@ class ThermalConductivity:
         self.symmetry = symmetries.QE_Symmetry(self.dyn.structure)
         self.symmetry.SetupQPoint()
         self.nsyms = self.symmetry.QE_nsym
-        syms = np.array(self.symmetry.QE_s.copy()).transpose(2,0,1)
+#        syms = np.array(self.symmetry.QE_s.copy()).transpose(2,0,1)
 
         self.set_kpoints_spglib()
         self.nband = 3*self.dyn.structure.N_atoms
@@ -1119,7 +1119,7 @@ class ThermalConductivity:
             return 1
 
         kappa_file = open(kappa_filename, 'w+')
-        tot_kappa = []
+#        tot_kappa = []
         if(not self.off_diag):
             kappa_file.write('#  ' + format('Temperature (K)', STR_FMT))
             kappa_file.write('   ' + format('Kappa xx (W/mK)', STR_FMT))
@@ -1518,7 +1518,7 @@ class ThermalConductivity:
         scale = np.insert(scale, 0, 1.0)
 
         kappa_diag = np.zeros((3,3, ne + 1))
-        kappa_diag1 = np.zeros((3,3))
+#        kappa_diag1 = np.zeros((3,3))
         kappa_nondiag = np.zeros_like(kappa_diag)
         for istar in self.qstar:
             for iqpt in istar:
@@ -1533,8 +1533,8 @@ class ThermalConductivity:
                                 i1 = np.append(np.append(np.flip(self.lineshapes[ls_key][iqpt, jband]*exponents_minus/(exponents_minus - 1.0)), np.zeros(1, dtype=float)), self.lineshapes[ls_key][iqpt, jband]*exponents_plus/(exponents_plus - 1.0))
                                 i2 = np.append(np.append(np.flip(self.lineshapes[ls_key][iqpt, iband]/(exponents_minus - 1.0)), np.zeros(1, dtype=float)), self.lineshapes[ls_key][iqpt, iband]/(exponents_plus - 1.0))
                                 integrals = np.correlate(i2, i1, mode = 'full')[len(i1) - 1:len(i1) + ne ]*self.delta_omega
-                                i3 = np.append(np.append(np.flip(energies), np.zeros(1, dtype=float)), energies)
-                                i4 = np.divide(i2, i3, out=np.zeros_like(i2), where=i3!=0.0)
+#                                i3 = np.append(np.append(np.flip(energies), np.zeros(1, dtype=float)), energies)
+#                                i4 = np.divide(i2, i3, out=np.zeros_like(i2), where=i3!=0.0)
                                 integrals += np.append(np.zeros(1, dtype=float), energies)*np.correlate(i2, i1, mode = 'full')[len(i1) - 1:len(i1) + ne ]*self.delta_omega*0.5
                                 #if(np.abs(np.sum(i1*i2)*self.delta_omega - integrals[0]) > np.abs(np.sum(i1*i2)*self.delta_omega)*1.0e-6):
                                 #    print(np.sum(i1*i2)*self.delta_omega, integrals[0])
@@ -1565,7 +1565,7 @@ class ThermalConductivity:
                                 i1 = np.append(np.append(np.flip(self.lineshapes[ls_key][iqpt, iband]*exponents_minus/(exponents_minus - 1.0)), np.zeros(1, dtype=float)), self.lineshapes[ls_key][iqpt, iband]*exponents_plus/(exponents_plus - 1.0))
                                 i2 = np.append(np.append(np.flip(self.lineshapes[ls_key][iqpt, iband]/(exponents_minus - 1.0)), np.zeros(1, dtype=float)), self.lineshapes[ls_key][iqpt, iband]/(exponents_plus - 1.0))
                                 integrals = np.correlate(i2, i1, mode = 'full')[len(i1)-1:len(i1) + ne]*self.delta_omega
-                                i3 = np.append(np.append(np.flip(energies), np.zeros(1, dtype=float)), energies)
+#                                i3 = np.append(np.append(np.flip(energies), np.zeros(1, dtype=float)), energies)
                                 #i4 = np.divide(i2, i3, out=np.zeros_like(i2), where=i3!=0.0)
                                 integrals += np.append(np.zeros(1, dtype=float), energies)*np.correlate(i2, i1, mode = 'full')[len(i1) - 1:len(i1) + ne ]*self.delta_omega*0.5
                                 #integrands_plus = self.lineshapes[ls_key][iqpt, iband]**2*exponents_plus/(exponents_plus - 1.0)**2
@@ -1659,7 +1659,7 @@ class ThermalConductivity:
 
     #################################################################################################################################
 
-    def get_lineshapes(self, temperature, write_lineshapes, energies, method = 'fortran', mode_mixing = 'no', gauss_smearing = False, lorentzian_approximation = lorentzian_approximation):
+    def get_lineshapes(self, temperature, write_lineshapes, energies, method = 'fortran', mode_mixing = 'no', gauss_smearing = False, lorentzian_approximation = False):
 
         """
         Calculate phonon lineshapes in full Brillouin zone.
@@ -1771,7 +1771,7 @@ class ThermalConductivity:
                 else:
                     print('Phonon lifetimes are already calculated so I am using that!')
 
-            scaled_positions = np.dot(self.dyn.structure.coords, np.linalg.inv(self.unitcell))
+#            scaled_positions = np.dot(self.dyn.structure.coords, np.linalg.inv(self.unitcell))
             rotations, translations = self.get_sg_in_cartesian()
             mapping = get_mapping_of_q_points(self.qstar, self.qpoints, self.rotations)
             for ikpt in range(self.nirrkpt):
@@ -1784,7 +1784,7 @@ class ThermalConductivity:
 
                 for iqpt in range(len(self.qstar[ikpt])):
                     jqpt = self.qstar[ikpt][iqpt]
-                    found = False
+#                    found = False
                     if(lorentzian_approximation):
                         for iband in range(self.nband):
                             Gamma = complex(0.0, 0.0)
@@ -1808,13 +1808,13 @@ class ThermalConductivity:
                             #        curr_ls[ikpt, iband,jband,:] = curr_ls[ikpt, iband,jband,:]/np.sum(curr_ls[ikpt,iband,jband,:])/(energies[1]-energies[0]) # Forcing the normalization. Not sure if the best option!
                             if(iqpt == 0):
                                 lineshapes[jqpt,:,:,:] = curr_ls[ikpt,:,:,:]
-                                found = True
+#                                found = True
                             else:
                                 qpt1 = self.qpoints[self.qstar[ikpt][0]]
                                 qpt2 = self.qpoints[jqpt]
                                 if(np.linalg.norm(qpt2 + qpt1 - np.rint(qpt2 + qpt1)) < 1.0e-6):
                                     lineshapes[jqpt,:,:,:] = curr_ls[ikpt,:,:,:].conj()
-                                    found = True
+#                                    found = True
                                 else:
                                     irot = mapping[ikpt][iqpt][0][0]
                                     atom_map = self.atom_map[irot]
@@ -1835,7 +1835,7 @@ class ThermalConductivity:
                             #print('Normalization constant all elements: ', tot_const_diag)
                         else:
 
-                 lineshapes[jqpt,:,:] = curr_ls[ikpt,:,:]*2.0
+                            lineshapes[jqpt,:,:] = curr_ls[ikpt,:,:]*2.0
                 if(write_lineshapes):
                     filename = 'Lineshape_irrkpt_' + str(jkpt) + '_T_' + format(temperature, '.1f')
                     self.write_lineshape(filename, lineshapes[jkpt], jkpt, energies, mode_mixing)
@@ -2817,7 +2817,7 @@ class ThermalConductivity:
             for iqpt in range(1, len(self.qstar[istar])):
                 iqpt2 = self.qstar[istar][iqpt]
                 qpt2 = self.qpoints[iqpt2]
-                kpt2 = self.k_points[iqpt2]
+#                kpt2 = self.k_points[iqpt2]
                 dyn2 = self.dynmats[iqpt2].copy()
                 for imap in range(len(mapping[istar][iqpt])):
                     irot = mapping[istar][iqpt][imap][0]
@@ -2972,8 +2972,8 @@ class ThermalConductivity:
             ddynmat.append(auxfc * mm_inv_mat)
             ddynmat[-1] += ddynmat[-1].conj().T
             ddynmat[-1] /= 2.0
-            if(icart == 0):
-                dirdynmat = ddynmat.copy()
+#            if(icart == 0):
+#                dirdynmat = ddynmat.copy()
 
         new_eigvecs = np.zeros_like(eigvecs)
         for deg in degs:
@@ -3021,7 +3021,7 @@ class ThermalConductivity:
         dynmat0 = self.get_dynamical_matrix(q)
         eigvals, eigvecs = np.linalg.eigh(dynmat0)
 
-        degs = check_degeneracy(eigvals, np.amax(eigvals)*1.0e-8)
+#        degs = check_degeneracy(eigvals, np.amax(eigvals)*1.0e-8)
         ddynmat = []
         for icart in range(3):
             dq = np.zeros_like(q)
@@ -3033,8 +3033,8 @@ class ThermalConductivity:
             dynmat2 = self.get_dynamical_matrix(q2)
             sqrt_dynmat2 = self.sqrt_dynamical_matrix(is_q_gamma, dynmat2)
             ddynmat.append((sqrt_dynmat1 - sqrt_dynmat2)/np.linalg.norm(dq)/2.0/2.0/np.pi)
-            if(icart == 0):
-                dirdynmat = ddynmat[0].copy()
+#            if(icart == 0):
+#                dirdynmat = ddynmat[0].copy()
 
         #rot_eigvecs = np.zeros_like(eigvecs)
         #for ideg, deg in enumerate(degs):
@@ -3102,7 +3102,7 @@ class ThermalConductivity:
 
         ddynmat = []
         for icart in range(3):
-            dynmat0 = self.get_dynamical_matrix(q)
+#            dynmat0 = self.get_dynamical_matrix(q)
             dq = np.zeros_like(q)
             dq[icart] = np.sum(np.linalg.norm(self.reciprocal_lattice[:,icart]))/1000.0
             q1 = q + dq
@@ -3110,8 +3110,8 @@ class ThermalConductivity:
             q2 = q - dq
             dynmat2 = self.get_dynamical_matrix(q2)
             ddynmat.append((dynmat1 - dynmat2)/np.linalg.norm(dq)/2.0/2.0/np.pi)
-            if(icart == 0):
-                dirdynmat = ddynmat[0].copy()
+#            if(icart == 0):
+#                dirdynmat = ddynmat[0].copy()
         ddynmat = np.array(ddynmat)
 
         new_eigvecs = np.zeros_like(eigvecs)
@@ -3476,7 +3476,7 @@ class ThermalConductivity:
                             outfile.write('\n')
         else:
             print('Lineshapes not calculated for this temperature! Can not calculate mean square displacements! ')
-            dos = 0
+#            dos = 0
             energies = 0
 
     ####################################################################################################################################
@@ -3701,7 +3701,7 @@ class ThermalConductivity:
         # Allocate the memory for the bubble
         ne=energies.shape[0]
         nat=structure.N_atoms
-        tmp_bubble = np.zeros((ne,self.nband), dtype = np.complex128, order = "F")
+#        tmp_bubble = np.zeros((ne,self.nband), dtype = np.complex128, order = "F")
 
         def compute_k(k):
             # phi3 in q, k, -q - k
@@ -3821,7 +3821,7 @@ class ThermalConductivity:
 
         # Allocate the memory for the bubble
         ne=energies.shape[0]
-        nat=structure.N_atoms
+#        nat=structure.N_atoms
         #tmp_bubble = np.zeros((ne,self.nband), dtype = np.complex128, order = "F")    #tmp_bubble is in the compute_k function bellow
 
         def compute_k(k):
