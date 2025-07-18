@@ -5,7 +5,7 @@ module second_order_ASR
 logical :: perm_initialized = .false.
 integer, allocatable :: P(:)
 
-contains 
+contains
 
 ! ============================== INITIALIZATIONS ============================================
 
@@ -17,47 +17,47 @@ subroutine initialize_perm(R2, n_blocks,SClat,PBC)
     !
     integer :: x(3), y(3),i_block,j_block
     logical :: found
-   
+
     write(*,*) " "
     write(*,*) "Initialize indices for permutation...", perm_initialized
 
-       
+
     allocate(P(n_blocks))
 
     do i_block = 1, n_blocks
-                
+
         x=R2(:,i_block)
         found=.false.
-        
+
         do j_block = 1, n_blocks
-        !    
+        !
             y=R2(:,j_block)
-            
+
             if ( Geq( y, -x  ,SCLat, PBC) ) then
                 P(i_block)=j_block
                 found=.true.
                 cycle
             end if
-        !    
+        !
         end do
-        
+
         if ( .not. found ) then
-        
+
             write(*,*) " ERROR: new vector found during the permutation symmetry initialization "
             write(*,*) "        the execution stops here. "
-            write(*,*) "        If the 2ndFC is centered, try to repeat the centering with higher Far "            
-            write(*,*) "        If the 2ndFC is not centered, try to repeat the ASR imposition with PBC=True "            
+            write(*,*) "        If the 2ndFC is centered, try to repeat the centering with higher Far "
+            write(*,*) "        If the 2ndFC is not centered, try to repeat the ASR imposition with PBC=True "
             stop
-            
+
         end if
-    
+
     end do
 
     perm_initialized =.true.
 
     write(*,*) "Initialize indices for permutation...done"
     write(*,*) " "
-    
+
 end subroutine initialize_perm
 
 subroutine clear_all()
@@ -78,14 +78,14 @@ function Geq(v1,v2,Lat,PBC)
     integer, dimension(:), intent(in)           :: v1,v2
     integer, dimension(:), intent(in) :: Lat
     logical, intent(in) :: PBC
-    !    
+    !
     if (PBC) then
      Geq= ( ALL (mod(v1-v2,Lat)==0) )
     else
      Geq= ( ALL (v1-v2 ==0) )
     end if
     !
-    !   
+    !
 end function Geq
 
 !=============================== PERM SYM =========================================
@@ -104,28 +104,29 @@ subroutine impose_perm_sym(FC,R2,SClat,PBC,verbose,FCvar,FC_sym,nat,n_blocks)
     integer                       :: jn1, jn2, i_block,nat3
     !
 
-    
+
     if ( .not. perm_initialized ) call initialize_perm(R2,n_blocks,SClat,PBC)
-          
-    nat3=3*nat  
-      
+
+    nat3=3*nat
+    !$omp parallel do private(jn1, jn2, i_block) shared(FC, FC_sym, P) collapse(3)
     do i_block = 1,n_blocks
 
     do jn1 = 1, nat3
     do jn2 = 1, nat3
-    
+
     FC_sym(jn1,jn2, i_block)=    FC(jn1,jn2, i_block)    &
-                               + FC(jn2,jn1, P(i_block))                                 
+                               + FC(jn2,jn1, P(i_block))
 
     end do
     end do
-                                    
+
     end do
+    !$omp end parallel do
 
     FC_sym=FC_sym/2.0_dp
 
 
-    FCvar=SUM(ABS(FC-FC_sym))/ SUM(ABS(FC)) 
+    FCvar=SUM(ABS(FC-FC_sym))/ SUM(ABS(FC))
 
     if (verbose) then
     write(*, * ) ""
@@ -148,20 +149,20 @@ subroutine impose_ASR_2nd(FC,pow,SClat,PBC,verbose, &
     logical, intent(in) :: PBC,verbose
     !
     real(kind=DP), intent(out) :: FCvar,sum2nd,FC_asr(3*nat,3*nat, n_blocks)
-    !
+    !    real(kind=DP) :: current_d1, current_sum2nd
     integer :: nat3,jn1,j2,n2,i_block
     real(kind=DP) :: d1,num,den,ratio,invpow
 
-    !    
+    !
     nat3=3*nat
-    
+
     FC_asr=0.0_dp
-    
+
     d1=0.0_dp
     sum2nd=0.0_dp
     !
     do jn1=1,nat3
-    do j2 =1,3
+      do j2 =1,3
             !
             num=0.0_dp
             den=0.0_dp
@@ -172,7 +173,7 @@ subroutine impose_ASR_2nd(FC,pow,SClat,PBC,verbose, &
                 do i_block=1,n_blocks
                 do n2=1,nat
                     num=num+ FC(jn1 , j2+3*(n2-1), i_block)
-                    den=den+ ABS(FC(jn1 , j2+3*(n2-1), i_block))**pow     
+                    den=den+ ABS(FC(jn1 , j2+3*(n2-1), i_block))**pow
                 end do
                 end do
                 !
@@ -186,7 +187,7 @@ subroutine impose_ASR_2nd(FC,pow,SClat,PBC,verbose, &
                             ratio*ABS(FC(jn1, j2+3*(n2-1), i_block))**pow
                     end do
                     end do
-                    !  
+                    !
                 else ! no need to modify the FC
                     !
                     do i_block=1,n_blocks
@@ -194,8 +195,8 @@ subroutine impose_ASR_2nd(FC,pow,SClat,PBC,verbose, &
                         FC_asr(jn1, j2+3*(n2-1), i_block)= &
                             FC(jn1, j2+3*(n2-1), i_block)
                     end do
-                    end do                
-                    !           
+                    end do
+                    !
                 end if
                 !
                 !
@@ -205,9 +206,9 @@ subroutine impose_ASR_2nd(FC,pow,SClat,PBC,verbose, &
                 do i_block=1,n_blocks
                 do n2=1,nat
                     num=num+ FC(jn1 , j2+3*(n2-1), i_block)
-                    den=den+1      
+                    den=den+1
                 end do
-                end do            
+                end do
                 !
                 ratio=num/den
                 !
@@ -217,9 +218,9 @@ subroutine impose_ASR_2nd(FC,pow,SClat,PBC,verbose, &
                         FC(jn1, j2+3*(n2-1), i_block)- ratio
                 end do
                 end do
-                !  
+                !
             end if
-            !            
+            !
             !
             d1 = d1 + den
             sum2nd = sum2nd + ABS(num) ! should be zero if the ASR were fulfilled
@@ -227,31 +228,31 @@ subroutine impose_ASR_2nd(FC,pow,SClat,PBC,verbose, &
             !
     end do
     end do
-    !    
-    FCvar=SUM(ABS(FC-FC_ASR))/ SUM(ABS(FC)) 
+    !
+    FCvar=SUM(ABS(FC-FC_ASR))/ SUM(ABS(FC))
     sum2nd=sum2nd/SUM(ABS(FC))
     !
     if (verbose) then
     if ( pow > 0.01_dp ) then
-    
+
         invpow=1.0_dp/pow
-        
-        write(*, * ) ""   
+
+        write(*, * ) ""
         write(*, "(' ASR imposition on 2nd index with pow= 'f5.3)") pow
         write(*, "(' Previous values: sum(|sum_2nd phi|)/sum(|phi|)=       'e20.6)" ) sum2nd
         write(*, "('                  sum(|phi|**pow)**(1/pow)/sum(|phi|)= 'e20.6)" ) d1**invpow/SUM(ABS(FC))
-        write(*, "(' FC relative variation= 'e20.6)" ) FCvar    
-        write(*, * ) "" 
-    
+        write(*, "(' FC relative variation= 'e20.6)" ) FCvar
+        write(*, * ) ""
+
     else
 
-        write(*, * ) ""   
-        write(*, "(' ASR imposition on 2nd index with pow= 0' )") 
+        write(*, * ) ""
+        write(*, "(' ASR imposition on 2nd index with pow= 0' )")
         write(*, "(' Previous value: sum(|sum_2nd phi|)/sum(|phi|)= 'e20.6 )" ) sum2nd
-        write(*, "(' FC relative variation= 'e20.6)" ) FCvar    
-        write(*, * ) ""     
-    
-    
+        write(*, "(' FC relative variation= 'e20.6)" ) FCvar
+        write(*, * ) ""
+
+
     end if
     end if
     !
@@ -314,19 +315,19 @@ do while (iter < maxite)
         write(*,*) " "
         write(*,"( ' * Convergence reached within threshold:' e20.6 )") threshold
         write(*,*) " "
-        write(*,"( ' * Total FC relative variation:' e20.6 )") SUM(ABS(FC-FC_out))/ SUM(ABS(FC)) 
+        write(*,"( ' * Total FC relative variation:' e20.6 )") SUM(ABS(FC-FC_out))/ SUM(ABS(FC))
         converged = .True.
         EXIT
    end if
-   
+
    !  check if there is STOP file
    OPEN(unit=100, file="STOP", status='OLD', iostat=ios)
    IF(ios==0) THEN
         CLOSE(100,status="DELETE")
         write(*,*) " File STOP found, the ASR execution terminates here"
-        EXIT 
+        EXIT
    ENDIF
-   
+
    ite=ite+1
    iter=ite*contr
 end do
@@ -337,7 +338,7 @@ if (.not. converged ) then
    write(*,"( ' Max number of iteration reached ('I6')' )") maxite
    write(*,"( ' Convergence not reached within threshold:' e20.6 )") threshold
    write(*,*) " "
-end if   
+end if
 
 
 end subroutine impose_ASR
