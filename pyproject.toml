@@ -14,11 +14,11 @@ name = "CellConstructor"
 version = "1.5.0" # Make sure this version matches meson.build
 description = "Python utilities interfaced with ASE for atomic crystal analysis"
 authors = [{name = "Lorenzo Monacelli"}]
-readme = "README.md" 
-requires-python = ">=3.8" # La versión mínima de Python soportada por tu proyecto
-license = { text = "MIT" } # Define la licencia del proyecto
+readme = "README.md"
+requires-python = ">=3.8" # The minimum version of Python supported by your project
+license = { text = "GPL" }
 
-keywords = [ # Palabras clave opcionales para describir tu paquete
+keywords = [ # Optional keywords to describe your package
     "crystallography",
     "phonons",
     "materials science",
@@ -26,30 +26,29 @@ keywords = [ # Palabras clave opcionales para describir tu paquete
     "ab initio"
 ]
 
-# Dependencias de tiempo de ejecución del proyecto.
-# Estas son las dependencias que se instalarán cuando alguien haga `pip install cellconstructor`.
+# Project runtime dependencies.
+# These are the dependencies that will be installed when someone runs `pip install cellconstructor`.
 dependencies = [
     "numpy",
     "ase",
     "scipy",
-    # Si alguna de tus extensiones Python tuviera una dependencia *adicional*
-    # que no sea numpy, ase, scipy (y que no sea una librería del sistema como BLAS/LAPACK),
-    # iría aquí.
+    # If any of your Python extensions had an *additional* dependency
+    # other than numpy, ase, or scipy (and not a system library like BLAS/LAPACK),
+    # it would go here.
 ]
 
 [project.urls]
-# URLs relevantes para tu proyecto.
-Homepage = "https://github.com/mesonepigreco/CellConstructor"
+Homepage = "https://sscha.eu/"
 Repository = "https://github.com/mesonepigreco/CellConstructor" # Puede ser el mismo que Homepage
-# Documentation = "https://tu-documentacion.readthedocs.io/" # Si tienes documentación
-# Issues = "https://github.com/mesonepigreco/CellConstructor/issues" # Para el seguimiento de errores
+# Documentation = "https://documentacion.readthedocs.io/"
+# Issues = "https://github.com/mesonepigreco/CellConstructor/issues"
 
 
-# --- Configuración específica de meson-python (Opcional pero útil) ---
+# --- Meson-python specific configuration (Optional but useful) ---
 [tool.meson-python]
-# Aquí puedes pasar opciones a Meson que controlan el proceso de construcción.
-# Por ejemplo, para habilitar la depuración o especificar una ruta de instalación diferente.
-# Por defecto, meson-python se encarga de usar el entorno virtual si existe.
+# Here you can pass options to Meson that control the build process.
+# For example, to enable debugging or specify a different installation path.
+# By default, meson-python takes care of using the virtual environment if it exists.
 
-# build-args = ["-Dbuildtype=debug"] # Descomenta para una compilación de depuración
-# setup-args = ["--prefix=/opt/cellconstructor"] # Para una instalación no estándar
+# build-args = ["-Dbuildtype=debug"] # Uncomment for a debug build
+# setup-args = ["--prefix=/opt/cellconstructor"] # For a non-standard installation
