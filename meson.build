@@ -1,33 +1,33 @@
 project('CellConstructor', 'fortran', 'c', 'python',
   version: '1.5.0',
-  license: 'MIT',
-  # Opciones comunes de compilación para Fortran.
-  # -cpp es esencial para el preprocesador Fortran.
-  # -O2 es una optimización general que tenías en setup.py.
+  license: 'GPL',
+  # Common compilation options for Fortran.
+  # -cpp is essential for the Fortran preprocessor.
+  # -O2 is a general optimization you had in setup.py.
   default_options: ['fortran_args=-cpp', 'fortran_args=-O2']
 )
 
-# --- Dependencias del sistema y de Python ---
-# Importa el módulo Python de Meson para manejar las extensiones y la instalación de Python.
+# --- System and Python Dependencies ---
+# Imports the Meson Python module to handle extensions and Python installation.
 python = import('python')
 python_installation = python.find_installation()
 
-# Define las dependencias de Python que numpy.distutils solía manejar.
-# Meson las buscará en el entorno Python actual.
+# Defines the Python dependencies that numpy.distutils used to handle.
+# Meson will look for them in the current Python environment.
 numpy_dep = python_installation.dependency('numpy', required: true)
 ase_dep = python_installation.dependency('ase', required: true)
 scipy_dep = python_installation.dependency('scipy', required: true)
 
-# Busca las librerías BLAS y LAPACK en el sistema.
-# Meson puede encontrar implementaciones como OpenBLAS, BLIS, Intel MKL, o las genéricas.
+# Searches the system for the BLAS and LAPACK libraries.
+# Meson can find implementations such as OpenBLAS, BLIS, Intel MKL, or generic ones.
 lapack_dep = dependency('lapack', required: true)
 blas_dep = dependency('blas', required: true)
 
-# Busca la librería OpenMP si es necesaria para la paralelización.
+# Look for the OpenMP library if it is needed for parallelization.
 openmp_dep = dependency('openmp', required: true)
 
 
-# --- Definición de las Extensiones Fortran ---
+# --- Definition of Fortran Extensions ---
 
 # Extensión 'symph'
 symph_sources = files(
@@ -47,12 +47,12 @@ symph_sources = files(
   'FModules/constants.f90', 'FModules/eff_charge_interp.f90',
   'FModules/get_translations.f90', 'FModules/get_equivalent_atoms.f90'
 )
-# Crea un módulo de extensión Python usando los fuentes Fortran y las dependencias.
+# Create a Python extension module using the Fortran sources and dependencies.
 py_symph_ext = python_installation.extension_module(
-  'symph', # Nombre del módulo resultante (ej. symph.cpython-310-x86_64-linux-gnu.so)
+  'symph', # Name of the resulting module (e.g. symph.cpython-310-x86_64-linux-gnu.so)
   symph_sources,
-  # Argumentos de compilación específicos para estos fuentes Fortran.
-  # -cpp ya se definió en default_options, pero se puede añadir aquí si es necesario override.
+  # Compilation arguments specific to these Fortran sources.
+  # -cpp is already defined in default_options, but can be added here if needed.
   # fortran_args: ['-cpp'],
   dependencies: [numpy_dep, lapack_dep, blas_dep]
 )
@@ -93,14 +93,14 @@ cond_sources = files(
 py_cond_ext = python_installation.extension_module(
   'thermal_conductivity',
   cond_sources,
-  # Aquí se añade explícitamente '-fopenmp' para esta extensión específica.
-  # "-O2" ya está en default_options.
+  # '-fopenmp' is explicitly added here for this specific extension.
+  # "-O2" is already in default_options.
   fortran_args: ['-fopenmp'],
   dependencies: [numpy_dep, lapack_dep, blas_dep, openmp_dep]
 )
 
-# --- Definición de la Extensión C 'cc_linalg' ---
-# Lógica condicional para el archivo wrapper basada en la versión de Python.
+# --- Definition of the C Extension 'cc_linalg' ---
+# Conditional logic for the wrapper file based on the Python version.
 wrapper_file = ''
 if python_installation.version().version_compare('<3.0')
   wrapper_file = 'CModules/wrapper.c'
@@ -112,13 +112,13 @@ cc_modules_sources = files('CModules/LinAlg.c', wrapper_file)
 py_cc_linalg_ext = python_installation.extension_module(
   'cc_linalg',
   cc_modules_sources,
-  # Asumo que cc_linalg también necesita numpy, si no, se puede quitar.
+# I assume cc_linalg also needs numpy, if not it can be removed.
   dependencies: [numpy_dep]
 )
 
-# --- Instalación de los módulos de extensión ---
-# Registra cada módulo de extensión para que Meson sepa que debe instalarlos
-# en el directorio de sitio-packages de Python.
+# --- Installing Extension Modules ---
+# Register each extension module so Meson knows to install them
+# in the Python site-packages directory.
 python_installation.install_extmod(py_symph_ext)
 python_installation.install_extmod(py_secondorder_ext)
 python_installation.install_extmod(py_thirdorder_ext)
@@ -126,22 +126,22 @@ python_installation.install_extmod(py_cond_ext)
 python_installation.install_extmod(py_cc_linalg_ext)
 
 
-# --- Instalación del paquete Python 'cellconstructor' ---
-# Esto instala los archivos .py del directorio 'cellconstructor'
-# en el subdirectorio 'cellconstructor' dentro del sitio-packages de Python.
+# --- Installing the Python package 'cellconstructor' ---
+# This installs the .py files from the 'cellconstructor' directory
+# into the 'cellconstructor' subdirectory within the Python site-packages.
 python_installation.install_sources(
   python_installation.find_sources('cellconstructor/*.py'),
   subdir: 'cellconstructor'
 )
 
-# Instalación de datos del paquete (archivos .dat)
-# Se instalan dentro del directorio 'cellconstructor/SymData' en el sitio-packages.
+# Installing package data (.dat files)
+# They are installed in the 'cellconstructor/SymData' directory in the site-packages.
 install_data('cellconstructor/SymData/gamma_symm_op.dat',
              'cellconstructor/SymData/space_groups_crystal.dat',
              install_dir: python_installation.get_install_dir() / 'cellconstructor' / 'SymData')
 
-# --- Instalación de los scripts ejecutables ---
-# Instala los scripts directamente en el directorio de scripts del entorno Python.
+# --- Installing the executable scripts ---
+# Installs the scripts directly into the Python environment's scripts directory.
 install_scripts(
   'scripts/symmetrize_dynmat.py',
   'scripts/cellconstructor_test.py',
