@@ -1,0 +1,55 @@
+# pyproject.toml
+
+[build-system]
+# Declara los backends de construcción y sus dependencias que pip necesita para construir el proyecto.
+# 'meson-python' es el backend que traduce las llamadas de pip a Meson.
+# 'meson' es la herramienta de construcción real.
+# 'ninja' es el sistema de construcción de bajo nivel que Meson usa por defecto para la compilación rápida.
+requires = ["meson-python>=0.13.0", "meson>=1.0.0", "ninja>=1.10"]
+build-backend = "mesonpy"
+
+[project]
+# Metadatos del proyecto, que antes estaban en la llamada `setup()` de setup.py.
+name = "CellConstructor"
+version = "1.5.0" # Asegúrate de que esta versión coincida con la de meson.build
+description = "Python utilities interfaced with ASE for atomic crystal analysis"
+authors = [{name = "Lorenzo Monacelli"}] # Puedes añadir más autores si es necesario
+readme = "README.md" # Si tienes un archivo README.md en la raíz de tu proyecto
+requires-python = ">=3.8" # La versión mínima de Python soportada por tu proyecto
+license = { text = "MIT" } # Define la licencia del proyecto
+
+keywords = [ # Palabras clave opcionales para describir tu paquete
+    "crystallography",
+    "phonons",
+    "materials science",
+    "quantum espresso",
+    "ab initio"
+]
+
+# Dependencias de tiempo de ejecución del proyecto.
+# Estas son las dependencias que se instalarán cuando alguien haga `pip install cellconstructor`.
+dependencies = [
+    "numpy",
+    "ase",
+    "scipy",
+    # Si alguna de tus extensiones Python tuviera una dependencia *adicional*
+    # que no sea numpy, ase, scipy (y que no sea una librería del sistema como BLAS/LAPACK),
+    # iría aquí.
+]
+
+[project.urls]
+# URLs relevantes para tu proyecto.
+Homepage = "https://github.com/mesonepigreco/CellConstructor"
+Repository = "https://github.com/mesonepigreco/CellConstructor" # Puede ser el mismo que Homepage
+# Documentation = "https://tu-documentacion.readthedocs.io/" # Si tienes documentación
+# Issues = "https://github.com/mesonepigreco/CellConstructor/issues" # Para el seguimiento de errores
+
+
+# --- Configuración específica de meson-python (Opcional pero útil) ---
+[tool.meson-python]
+# Aquí puedes pasar opciones a Meson que controlan el proceso de construcción.
+# Por ejemplo, para habilitar la depuración o especificar una ruta de instalación diferente.
+# Por defecto, meson-python se encarga de usar el entorno virtual si existe.
+
+# build-args = ["-Dbuildtype=debug"] # Descomenta para una compilación de depuración
+# setup-args = ["--prefix=/opt/cellconstructor"] # Para una instalación no estándar
