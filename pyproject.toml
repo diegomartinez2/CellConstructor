@@ -1,20 +1,20 @@
 # pyproject.toml
 
 [build-system]
-# Declara los backends de construcción y sus dependencias que pip necesita para construir el proyecto.
-# 'meson-python' es el backend que traduce las llamadas de pip a Meson.
-# 'meson' es la herramienta de construcción real.
-# 'ninja' es el sistema de construcción de bajo nivel que Meson usa por defecto para la compilación rápida.
+# Declare the build backends and their dependencies that pip needs to build the project.
+# 'meson-python' is the backend that translates pip calls to Meson.
+# 'meson' is the actual build tool.
+# 'ninja' is the low-level build system that Meson uses by default for rapid compilation.
 requires = ["meson-python>=0.13.0", "meson>=1.0.0", "ninja>=1.10"]
 build-backend = "mesonpy"
 
 [project]
-# Metadatos del proyecto, que antes estaban en la llamada `setup()` de setup.py.
+# Project metadata, which was previously in the `setup()` call of setup.py.
 name = "CellConstructor"
-version = "1.5.0" # Asegúrate de que esta versión coincida con la de meson.build
+version = "1.5.0" # Make sure this version matches meson.build
 description = "Python utilities interfaced with ASE for atomic crystal analysis"
-authors = [{name = "Lorenzo Monacelli"}] # Puedes añadir más autores si es necesario
-readme = "README.md" # Si tienes un archivo README.md en la raíz de tu proyecto
+authors = [{name = "Lorenzo Monacelli"}]
+readme = "README.md" 
 requires-python = ">=3.8" # La versión mínima de Python soportada por tu proyecto
 license = { text = "MIT" } # Define la licencia del proyecto
 
