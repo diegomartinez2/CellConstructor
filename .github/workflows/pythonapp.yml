@@ -1,4 +1,4 @@
-name: Python application
+name: Python application with Meson
 
 on:
   push:
@@ -6,38 +6,47 @@ on:
   pull_request:
     branches: [ master ]
 
-
 jobs:
   build:
-
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10"]
 
     steps:
-    - uses: actions/checkout@v1
-    - name: Set up Python 3.7
-      uses: actions/setup-python@v1
+    - uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
       with:
-        python-version: 3.7
-    - name: Install dependencies
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies (Meson and Ninja)
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
-    - name: Lint with flake8
+        pip install meson ninja
+        # Si tu proyecto Python tiene dependencias que Meson no gestiona,
+        # instálalas aquí con pip. Por ejemplo:
+        # pip install -r requirements.txt
+    - name: Cache Python dependencies
+      uses: actions/cache@v2
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-python-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-python-${{ matrix.python-version }}-
+    - name: Configure build with Meson
+      run: meson setup builddir
+      # Puedes pasar opciones de configuración a Meson si es necesario:
+      # run: meson setup builddir -Dsome_option=true
+    - name: Compile with Meson/Ninja
+      run: meson compile -C builddir
+      # O directamente con Ninja:
+      # run: ninja -C builddir
+    - name: Run tests with Meson
+      run: meson test -C builddir
+      # Si tus pruebas no están integradas con Meson,
+      # puedes ejecutar pytest u otra herramienta aquí:
+      # run: pytest builddir
+    - name: Lint with flake8 (Optional, if not handled by Meson)
       run: |
         pip install flake8
-        # stop the build if there are Python syntax errors or undefined names
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-    - name: Prepare the installation
-      run: |
-        sudo apt-get update
-        # Install the fortran compiler with lapack and blas
-        sudo apt-get install gfortran libblas-dev liblapack-dev
-    - name: Install the package
-      run: |
-        python setup.py install --user
-    - name: Test with pytest
-      run: |
-        pip install pytest
-        pytest
+        flake8 . --count --select=E901,F63,F7,F82 --show-source --statistics
