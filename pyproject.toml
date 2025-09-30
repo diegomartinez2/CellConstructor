@@ -15,7 +15,7 @@ version = "1.5.0" # Make sure this version matches meson.build
 description = "Python utilities interfaced with ASE for atomic crystal analysis"
 authors = [{name = "Lorenzo Monacelli"}]
 readme = "README.md"
-requires-python = ">=3.12" # The minimum version of Python supported by your project
+requires-python = ">=3.8,<=3.12" # Updated to specify Python 3.8 to 3.12
 license = { text = "GPL" }
 
 keywords = [ # Optional keywords to describe your package
