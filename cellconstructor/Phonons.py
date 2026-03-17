@@ -3681,8 +3681,11 @@ WARNING: Effective charges are not accounted by this method
                 t2 = ForceTensor.Tensor2(self.structure, self.structure.generate_supercell(self.GetSupercell()), self.GetSupercell())
                 t2.SetupFromPhonons(self)
 
-                if lo_to_split.lower() == "random":
-                    fc_gamma = t2.Interpolate(np.zeros(3))
+                if is_instance(lo_to_split, str):
+                    if lo_to_split.lower() == "random":
+                        fc_gamma = t2.Interpolate(np.zeros(3))
+                    else:
+                        raise ValueError("Error, lo_to_split argument '%s' not recognized" % lo_to_split)
                 else:
                     fc_gamma = t2.Interpolate(np.zeros(3), q_direct= -lo_to_split)
 
