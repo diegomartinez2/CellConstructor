@@ -3681,7 +3681,7 @@ WARNING: Effective charges are not accounted by this method
                 t2 = ForceTensor.Tensor2(self.structure, self.structure.generate_supercell(self.GetSupercell()), self.GetSupercell())
                 t2.SetupFromPhonons(self)
 
-                if is_instance(lo_to_split, str):
+                if isinstance(lo_to_split, str):
                     if lo_to_split.lower() == "random":
                         fc_gamma = t2.Interpolate(np.zeros(3))
                     else:
