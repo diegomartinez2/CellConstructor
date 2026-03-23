@@ -3617,7 +3617,7 @@ WARNING: Effective charges are not accounted by this method
 
 
         # Get the structure in the supercell
-        super_structure = self.structure.generate_supercell(self.GetSupercell())
+        super_structure = self.structure.generate_supercell(self.GetSupercell(), timer=timer)
 
         # Get the supercell correspondence vector
         itau = super_structure.get_itau(self.structure) - 1 # Fort2Py
@@ -3677,6 +3677,8 @@ WARNING: Effective charges are not accounted by this method
                 if self.effective_charges is None:
                     warnings.warn("WARNING: Requested LO-TO splitting without effective charges. LO-TO ignored.")
 
+                # TIMER: LO-TO splitting computation
+                t_lo_to_start = time.time()
                 # Initialize the Force Constant
                 t2 = ForceTensor.Tensor2(self.structure, self.structure.generate_supercell(self.GetSupercell()), self.GetSupercell())
                 t2.SetupFromPhonons(self)
@@ -3694,6 +3696,9 @@ WARNING: Effective charges are not accounted by this method
                 wq2, eq = np.linalg.eigh(d_gamma)
 
                 wq = np.sqrt(np.abs(wq2)) * np.sign(wq2)
+                t_lo_to_end = time.time()
+                if timer is not None:
+                    timer.add_timer("LO-TO splitting", t_lo_to_end - t_lo_to_start)
             else:
                 # Diagonalize the matrix in the given q point
                 if timer is not None:
@@ -3840,6 +3845,11 @@ WARNING: Effective charges are not accounted by this method
 
 
 
+        # TIMER: End main q-point loop
+        t_main_loop_end = time.time()
+        if timer is not None:
+            timer.add_timer("Main q-point loop total", t_main_loop_end - t_main_loop_start)
+        
         # Sort the frequencies
         sort_mask = np.argsort(w_array)
         w_array = w_array[sort_mask]
@@ -3900,23 +3910,41 @@ WARNING: Effective charges are not accounted by this method
         w_q = np.zeros((3*nat, nq), dtype = np.double, order = "F")
         pols_q = np.zeros((3*nat, 3*nat, nq), dtype = np.complex128, order = "F")
 
-        # Get the structure in the supercell
-        super_structure = self.structure.generate_supercell(self.GetSupercell())
+        # TIMER: Generate supercell structure
+        t_start = time.time()
+        super_structure = self.structure.generate_supercell(self.GetSupercell(), timer=timer)
+        t_end = time.time()
+        if timer is not None:
+            timer.add_timer("Generate supercell structure", t_end - t_start)
 
-        # Get the supercell correspondence vector
+        # TIMER: Get itau mapping
+        t_start = time.time()
         itau = super_structure.get_itau(self.structure) - 1 # Fort2Py
+        t_end = time.time()
+        if timer is not None:
+            timer.add_timer("Get itau mapping", t_end - t_start)
 
-        # Get the itau in the contracted indices (3*nat_sc -> 3*nat)
+        # TIMER: Compute itau_modes
+        t_start = time.time()
         itau_modes = (np.tile(np.array(itau) * 3, (3,1)).T + np.arange(3)).ravel()
+        t_end = time.time()
+        if timer is not None:
+            timer.add_timer("Compute itau_modes", t_end - t_start)
 
-        # Get the position in the supercell
+        # TIMER: Compute R_vec positions
+        t_start = time.time()
         R_vec = np.zeros((nmodes, 3), dtype = np.double)
         for i in range(nat_sc):
             R_vec[3*i : 3*i+3, :] = np.tile(super_structure.coords[i, :] - self.structure.coords[itau[i], :], (3,1))
+        t_end = time.time()
+        if timer is not None:
+            timer.add_timer("Compute R_vec positions", t_end - t_start)
 
         # OPTIMIZATION 1: Pre-compute unique q-points 
         bg = self.structure.get_reciprocal_vectors() / (2*np.pi)
         
+        # TIMER: Q-point deduplication
+        t_start = time.time()
         # Build a mask for q-points to process (unique ones, not related by G-q)
         q_array = np.array(self.q_tot)
         n_q = len(self.q_tot)
@@ -3935,15 +3963,27 @@ WARNING: Effective charges are not accounted by this method
                 if dist < __EPSILON__:
                     skip_mask[iq] = True
                     break
+        t_end = time.time()
+        if timer is not None:
+            timer.add_timer("Q-point deduplication", t_end - t_start)
         
         # OPTIMIZATION 2: Pre-compute phase factors for all q-points at once
+        # TIMER: Phase factor computation
+        t_start = time.time()
         # This avoids computing R_vec.dot(q) repeatedly in the inner loop
         phase_factors = np.exp(1j * 2 * np.pi * R_vec.dot(q_array.T))  # (nmodes, nq)
+        t_end = time.time()
+        if timer is not None:
+            timer.add_timer("Compute phase factors", t_end - t_start)
 
         i_mu = 0
+        # TIMER: Main q-point loop
+        t_main_loop_start = time.time()
         for iq, q in enumerate(self.q_tot):
             # Check if this q point should be skipped (already processed equivalent)
             if skip_mask[iq]:
+                # TIMER: Process skipped q-point
+                t_skip_start = time.time()
                 # Check if we must return anyway the polarization in q space
                 if return_qmodes:
                     if timer is not None:
@@ -3953,6 +3993,9 @@ WARNING: Effective charges are not accounted by this method
 
                     w_q[:, iq] = wq
                     pols_q[:, :, iq] = eq
+                t_skip_end = time.time()
+                if timer is not None:
+                    timer.add_timer("Process skipped q-points", t_skip_end - t_skip_start)
                 continue
 
             # Check if this q = -q + G
@@ -3973,6 +4016,8 @@ WARNING: Effective charges are not accounted by this method
                 if self.effective_charges is None:
                     warnings.warn("WARNING: Requested LO-TO splitting without effective charges. LO-TO ignored.")
 
+                # TIMER: LO-TO splitting computation
+                t_lo_to_start = time.time()
                 # Initialize the Force Constant
                 t2 = ForceTensor.Tensor2(self.structure, self.structure.generate_supercell(self.GetSupercell()), self.GetSupercell())
                 t2.SetupFromPhonons(self)
@@ -3990,6 +4035,9 @@ WARNING: Effective charges are not accounted by this method
                 wq2, eq = np.linalg.eigh(d_gamma)
 
                 wq = np.sqrt(np.abs(wq2)) * np.sign(wq2)
+                t_lo_to_end = time.time()
+                if timer is not None:
+                    timer.add_timer("LO-TO splitting", t_lo_to_end - t_lo_to_start)
             else:
                 # Diagonalize the matrix in the given q point
                 if timer is not None:
@@ -4078,6 +4126,13 @@ WARNING: Effective charges are not accounted by this method
             if verbose:
                 print("The {} / {} q point produced {} nodes".format(iq, len(self.q_tot), i_mu - nm_q))
 
+        # TIMER: Sort frequencies and polarization vectors
+        t_sort_start = time.time()
+        # TIMER: End main q-point loop
+        t_main_loop_end = time.time()
+        if timer is not None:
+            timer.add_timer("Main q-point loop total", t_main_loop_end - t_main_loop_start)
+        
         # Sort the frequencies
         sort_mask = np.argsort(w_array)
         w_array = w_array[sort_mask]
@@ -4085,6 +4140,9 @@ WARNING: Effective charges are not accounted by this method
 
         # Get the check for the polarization vector normalization
         assert np.max(np.abs(np.einsum("ab, ab->b", e_pols_sc, e_pols_sc) - 1)) < __EPSILON__
+        t_sort_end = time.time()
+        if timer is not None:
+            timer.add_timer("Sort and validate", t_sort_end - t_sort_start)
 
         if return_qmodes:
             return w_array, e_pols_sc, w_q, pols_q

@@ -1,6 +1,6 @@
 project('CellConstructor',
   ['c','fortran'],
-  version: '1.5.3',
+  version: '1.6.0',
   license: 'GPL',
   meson_version: '>= 1.1.0', # <- set min version of meson.
   default_options : [
@@ -129,6 +129,7 @@ fortran_sources_symph = [
     'FModules/interp.f90',
     'FModules/q_gen.f90',
     'FModules/set_tau.f90',
+    'FModules/set_tau_fast.f90',
     'FModules/symm_base.f90',
     'FModules/unwrap_tensors.f90',
     'FModules/eqvect.f90',

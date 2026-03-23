@@ -23,6 +23,7 @@ except:
 
     
 import sys, os
+import time
 
 import cellconstructor.Methods as Methods
 import cellconstructor.symmetries as SYM
@@ -1607,7 +1608,7 @@ Error, to compute the volume the structure must have a unit cell initialized:
         itau = self.get_itau(unit_cell_structure) - 1 
         return self.coords[:,:] - unit_cell_structure.coords[itau[:], :]
 
-    def generate_supercell(self, dim, itau = None, QE_convention = True, get_itau = False):
+    def generate_supercell(self, dim, itau = None, QE_convention = True, get_itau = False, timer=None):
         """
         This method generate a supercell of specified dimension, replicating the system
         on the n-th neighbours unit cells.
@@ -1640,6 +1641,10 @@ Error, to compute the volume the structure must have a unit cell initialized:
 
         if not self.has_unit_cell:
             raise ValueError("ERROR, the specified system has not the unit cell.")
+
+        # TIMER: Start total timing
+        if timer is not None:
+            t_start_total = time.time()
 
         total_dim = np.prod(dim)
 
@@ -1689,6 +1694,10 @@ Error, to compute the volume the structure must have a unit cell initialized:
             
         
         if QE_convention:
+            # TIMER: Array preparation
+            if timer is not None:
+                t_start_prep = time.time()
+            
             # Prepare the variables
             tau = np.array(self.coords.transpose(), dtype = np.float64, order = "F")
             tau_sc = np.zeros((3, new_N_atoms), dtype = np.float64, order = "F")
@@ -1699,21 +1708,36 @@ Error, to compute the volume the structure must have a unit cell initialized:
             at = np.array( self.unit_cell.transpose(), dtype = np.float64, order = "F")
             
             itau = np.zeros(new_N_atoms, dtype = np.intc)
-#            
-#            print "AT SC:", at_sc
-#            print "AT:", at
-#            print "TAU SC:", tau_sc
-#            print "TAU:", tau
-#            
-            # Fill the atom
-            symph.set_tau(at_sc, at, tau_sc, tau, ityp_sc, ityp, itau, new_N_atoms, self.N_atoms)
             
+            # TIMER: End array preparation, start Fortran call
+            if timer is not None:
+                t_end_prep = time.time()
+                timer.add_timer("GS: Array preparation", t_end_prep - t_start_prep)
+                t_start_fortran = time.time()
+            
+            # Fill the atom using optimized set_tau_fast (O(N) instead of O(N^4))
+            # Signature: tau, ityp, itau_blk = set_tau_fast(nat, at, at_blk, tau_blk, ityp_blk)
+            tau_sc, ityp_sc, itau = symph.set_tau_fast(new_N_atoms, at_sc, at, tau, ityp)
+            
+            # TIMER: End Fortran call, start post-processing
+            if timer is not None:
+                t_end_fortran = time.time()
+                timer.add_timer("GS: Fortran set_tau call", t_end_fortran - t_start_fortran)
+                t_start_post = time.time()
             
             supercell.coords[:,:] = tau_sc.transpose()
             itau -= 1 # Fortran To Python indexing
-            supercell.atoms = [self.atoms[x] for x in itau] 
+            supercell.atoms = [self.atoms[x] for x in itau]
             
-            
+            # TIMER: End post-processing
+            if timer is not None:
+                t_end_post = time.time()
+                timer.add_timer("GS: Post-processing", t_end_post - t_start_post)
+        
+        # TIMER: Total time
+        if timer is not None:
+            t_end_total = time.time()
+            timer.add_timer("GS: Total", t_end_total - t_start_total)
         
         if get_itau:
             return supercell, itau 
