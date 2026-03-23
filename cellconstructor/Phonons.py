@@ -3632,6 +3632,9 @@ WARNING: Effective charges are not accounted by this method
 
         i_mu = 0
         bg = self.structure.get_reciprocal_vectors() / (2*np.pi)
+        
+        # TIMER: Main q-point loop
+        t_main_loop_start = time.time()
         for iq, q in enumerate(self.q_tot):
             # Check if the current q point has been seen (we do not distinguish between q and -q)
             skip_this_q = False
