@@ -3560,7 +3560,7 @@ WARNING: Effective charges are not accounted by this method
         if apply_sum_rule:
             self.ApplySumRule()
 
-    def DiagonalizeSupercell(self, verbose = False, lo_to_split = None, return_qmodes = False, timer=None):
+    def DiagonalizeSupercell_slow(self, verbose = False, lo_to_split = None, return_qmodes = False, timer=None):
         r"""
         DIAGONALIZE THE DYNAMICAL MATRIX IN THE SUPERCELL
         =================================================
@@ -3845,6 +3845,243 @@ WARNING: Effective charges are not accounted by this method
         w_array = w_array[sort_mask]
         e_pols_sc = e_pols_sc[:, sort_mask]
 
+
+        # Get the check for the polarization vector normalization
+        assert np.max(np.abs(np.einsum("ab, ab->b", e_pols_sc, e_pols_sc) - 1)) < __EPSILON__
+
+        if return_qmodes:
+            return w_array, e_pols_sc, w_q, pols_q
+        return w_array, e_pols_sc
+
+
+    def DiagonalizeSupercell(self, verbose = False, lo_to_split = None, return_qmodes = False, timer=None):
+        r"""
+        DIAGONALIZE THE DYNAMICAL MATRIX IN THE SUPERCELL (FAST VERSION)
+        ================================================================
+
+        This is an optimized version of DiagonalizeSupercell that uses:
+        1. Pre-computed phase factors for all q-points
+        2. Vectorized polarization vector construction
+        3. Reduced memory allocations in hot loops
+
+        The algorithm and output are identical to DiagonalizeSupercell,
+        but the implementation is optimized for speed.
+
+        Parameters
+        ----------
+            - lo_to_split : string or ndarray
+                Could be a string with random, or a ndarray indicating the direction on which the
+                LO-TO splitting is computed. If None it is neglected.
+                If LO-TO is specified but no effective charges are present, then a warning is print and it is ignored.
+            - return_qmodes : bool
+                If true, frequencies and polarizations in q space are returned.
+        Results
+        -------
+            - w_mu : ndarray( size = (n_modes), dtype = np.double)
+                Frequencies in the supercell
+            - e_mu : ndarray( size = (3*Nat_sc, n_modes), dtype = np.double, order = "F")
+                Polarization vectors in the supercell
+            - w_q : ndarray( size = (3*Nat, nq), dtype = np.double, order = "F")
+                Frequencies in the q space (only if return_qmodes is True)
+            - e_q : ndarray( size = (3*Nat, 3*Nat, nq), dtype = np.complex128, order = "F")
+                Polarization vectors in the q space (only if return_qmodes is True)
+        """
+
+        supercell_size = len(self.q_tot)
+        nat = self.structure.N_atoms
+
+        nmodes = 3*nat*supercell_size
+        nat_sc = nat*supercell_size
+
+        w_array = np.zeros( nmodes, dtype = np.double)
+        e_pols_sc = np.zeros( (nmodes, nmodes), dtype = np.double, order = "F")
+
+        nq = len(self.q_tot)
+        w_q = np.zeros((3*nat, nq), dtype = np.double, order = "F")
+        pols_q = np.zeros((3*nat, 3*nat, nq), dtype = np.complex128, order = "F")
+
+        # Get the structure in the supercell
+        super_structure = self.structure.generate_supercell(self.GetSupercell())
+
+        # Get the supercell correspondence vector
+        itau = super_structure.get_itau(self.structure) - 1 # Fort2Py
+
+        # Get the itau in the contracted indices (3*nat_sc -> 3*nat)
+        itau_modes = (np.tile(np.array(itau) * 3, (3,1)).T + np.arange(3)).ravel()
+
+        # Get the position in the supercell
+        R_vec = np.zeros((nmodes, 3), dtype = np.double)
+        for i in range(nat_sc):
+            R_vec[3*i : 3*i+3, :] = np.tile(super_structure.coords[i, :] - self.structure.coords[itau[i], :], (3,1))
+
+        # OPTIMIZATION 1: Pre-compute unique q-points 
+        bg = self.structure.get_reciprocal_vectors() / (2*np.pi)
+        
+        # Build a mask for q-points to process (unique ones, not related by G-q)
+        q_array = np.array(self.q_tot)
+        n_q = len(self.q_tot)
+        
+        skip_mask = np.zeros(n_q, dtype=bool)
+        
+        # For each q point, check if we've seen an equivalent one before
+        for iq in range(n_q):
+            if skip_mask[iq]:
+                continue
+            for jq in range(iq):
+                if skip_mask[jq]:
+                    continue
+                # Check if q and q_prev are related by G-q operation
+                dist = Methods.get_min_dist_into_cell(bg, -q_array[iq], q_array[jq])
+                if dist < __EPSILON__:
+                    skip_mask[iq] = True
+                    break
+        
+        # OPTIMIZATION 2: Pre-compute phase factors for all q-points at once
+        # This avoids computing R_vec.dot(q) repeatedly in the inner loop
+        phase_factors = np.exp(1j * 2 * np.pi * R_vec.dot(q_array.T))  # (nmodes, nq)
+
+        i_mu = 0
+        for iq, q in enumerate(self.q_tot):
+            # Check if this q point should be skipped (already processed equivalent)
+            if skip_mask[iq]:
+                # Check if we must return anyway the polarization in q space
+                if return_qmodes:
+                    if timer is not None:
+                        wq, eq = timer.execute_timed_function(self.DyagDinQ, iq)
+                    else:
+                        wq, eq = self.DyagDinQ(iq)
+
+                    w_q[:, iq] = wq
+                    pols_q[:, :, iq] = eq
+                continue
+
+            # Check if this q = -q + G
+            is_minus_q = False
+            if Methods.get_min_dist_into_cell(bg, q, -q) < 1e-6:
+                is_minus_q = True
+
+                # The dynamical matrix must be real
+                re_part = np.real(self.dynmats[iq])
+
+                assert np.max(np.abs(np.imag(self.dynmats[iq]))) < __EPSILON__, "Error, at point {} (q = -q + G) the dynamical matrix is complex".format(iq)
+
+                # Enforce reality to avoid complex polarization vectors
+                self.dynmats[iq] = re_part
+
+            # Check if this is gamma (to apply the LO-TO splitting)
+            if Methods.get_min_dist_into_cell(bg, q, np.zeros(3)) < 1e-16 and lo_to_split is not None:
+                if self.effective_charges is None:
+                    warnings.warn("WARNING: Requested LO-TO splitting without effective charges. LO-TO ignored.")
+
+                # Initialize the Force Constant
+                t2 = ForceTensor.Tensor2(self.structure, self.structure.generate_supercell(self.GetSupercell()), self.GetSupercell())
+                t2.SetupFromPhonons(self)
+
+                if isinstance(lo_to_split, str):
+                    if lo_to_split.lower() == "random":
+                        fc_gamma = t2.Interpolate(np.zeros(3))
+                    else:
+                        raise ValueError("Error, lo_to_split argument '%s' not recognized" % lo_to_split)
+                else:
+                    fc_gamma = t2.Interpolate(np.zeros(3), q_direct= -lo_to_split)
+
+                _m_ = np.tile(self.structure.get_masses_array(), (3,1)).T.ravel()
+                d_gamma = fc_gamma / np.sqrt(np.outer(_m_, _m_))
+                wq2, eq = np.linalg.eigh(d_gamma)
+
+                wq = np.sqrt(np.abs(wq2)) * np.sign(wq2)
+            else:
+                # Diagonalize the matrix in the given q point
+                if timer is not None:
+                    wq, eq = timer.execute_timed_function(self.DyagDinQ, iq)
+                else:
+                    wq, eq = self.DyagDinQ(iq)
+
+            # Store the frequencies and the polarization vectors
+            w_q[:, iq] = wq
+            pols_q[:, :, iq] = eq
+
+            # OPTIMIZATION 3: Vectorized polarization vector construction
+            nm_q = i_mu
+            t1 = time.time()
+            
+            # Get all polarization vectors for this q-point
+            tilde_e_qnu_all = eq  # (3*nat, 3*nat)
+            
+            # Extract relevant components using itau_modes
+            e_contracted = tilde_e_qnu_all[itau_modes, :]  # (nmodes, nmodes_unit)
+            
+            # Get phase factors for this q-point
+            phase_q = phase_factors[:, iq]  # (nmodes,)
+            
+            # Broadcast and multiply: e_sc = e_contracted * phase / sqrt(N_q)
+            c_e_sc = e_contracted * phase_q[:, np.newaxis] / np.sqrt(supercell_size)
+            c_e_sc_mq = np.conj(c_e_sc)
+            
+            # Compute real and imaginary parts vectorized
+            evec_1_all = np.real(0.5 * (c_e_sc + c_e_sc_mq))  # (nmodes, nmodes_unit)
+            evec_2_all = np.real((c_e_sc - c_e_sc_mq) / (2*1j))  # (nmodes, nmodes_unit)
+            
+            # Compute norms vectorized
+            norm1_all = np.sum(evec_1_all**2, axis=0)  # (nmodes_unit,)
+            norm2_all = np.sum(evec_2_all**2, axis=0)  # (nmodes_unit,)
+            
+            # Now iterate over modes but with pre-computed values
+            for i_qnu, w_qnu in enumerate(wq):
+                norm1 = norm1_all[i_qnu]
+                norm2 = norm2_all[i_qnu]
+                
+                evec_1 = evec_1_all[:, i_qnu]
+                evec_2 = evec_2_all[:, i_qnu]
+                
+                EPSILON = 1e-5
+                add_1 = norm1 > EPSILON
+                add_2 = norm2 > EPSILON
+                
+                if is_minus_q:
+                    if add_1 and add_2:
+                        # Check linear dependence
+                        scalar_dot = np.dot(evec_1, evec_2) / np.sqrt(norm1 * norm2)
+                        if np.abs(np.abs(scalar_dot) - 1) > EPSILON:
+                            raise ValueError("Error, with q = -q + G, the two vectors should be linearly dependent")
+                        
+                        # Keep the one with higher norm
+                        if norm1 > norm2:
+                            add_2 = False
+                        else:
+                            add_1 = False
+                else:
+                    if not (add_1 and add_2):
+                        raise ValueError("Error, the q_point = {} {} {} should contribute also for -q, something went wrong".format(*list(q)))
+                
+                if add_1 and add_2:
+                    # Since both real and imaginary should match in this case
+                    # Add only one of them
+                    if is_minus_q:
+                        add_2 = False
+                
+                # Add the vectors
+                if add_1:
+                    w_array[i_mu] = w_qnu
+                    e_pols_sc[:, i_mu] = evec_1 / np.sqrt(norm1)
+                    i_mu += 1
+                if add_2:
+                    w_array[i_mu] = w_qnu
+                    e_pols_sc[:, i_mu] = evec_2 / np.sqrt(norm2)
+                    i_mu += 1
+
+            t2 = time.time()
+            if timer is not None:
+                timer.add_timer("Manipulate polarization vectors", t2 - t1)
+
+            # Print how many vectors have been extracted
+            if verbose:
+                print("The {} / {} q point produced {} nodes".format(iq, len(self.q_tot), i_mu - nm_q))
+
+        # Sort the frequencies
+        sort_mask = np.argsort(w_array)
+        w_array = w_array[sort_mask]
+        e_pols_sc = e_pols_sc[:, sort_mask]
 
         # Get the check for the polarization vector normalization
         assert np.max(np.abs(np.einsum("ab, ab->b", e_pols_sc, e_pols_sc) - 1)) < __EPSILON__
