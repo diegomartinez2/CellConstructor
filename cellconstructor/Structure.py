@@ -1499,6 +1499,130 @@ Error, to compute the volume the structure must have a unit cell initialized:
         cell = (lattice, positions, numbers)
         return cell
 
+    def get_primitive_cell(self, symprec=1e-5, angle_tolerance=-1.0, no_idealize=False, 
+                           return_itau=False):
+        """
+        GET PRIMITIVE CELL
+        ==================
+        
+        This method uses spglib to find the primitive cell from a supercell structure.
+        It exploits the crystal symmetries to identify the smallest repeating unit.
+        
+        If the input structure is already a primitive cell, a copy is returned.
+        
+        Parameters
+        ----------
+        symprec : float, optional
+            Symmetry precision tolerance in Cartesian coordinates. 
+            Default is 1e-5.
+        angle_tolerance : float, optional
+            Tolerance of angle between basis vectors in degrees. 
+            If negative (default), the angle tolerance is disabled.
+        no_idealize : bool, optional
+            If True, disable idealization of basis vectors and atomic positions.
+            This preserves the original Cartesian coordinates. Default is False.
+        return_itau : bool, optional
+            If True, also return the itau array mapping from input atoms to primitive atoms.
+            Similar to the itau in generate_supercell, this indicates which primitive atom
+            each input atom corresponds to. Default is False.
+            
+        Returns
+        -------
+        Structure or tuple
+            The primitive cell structure. If return_itau is True, returns a tuple
+            (primitive_structure, itau) where itau is an ndarray indicating
+            which primitive atom each input atom corresponds to.
+            
+        Raises
+        ------
+        ImportError
+            If spglib is not available.
+        ValueError
+            If the structure has no unit cell or if primitive search fails.
+            
+        Notes
+        -----
+        This method requires spglib to be installed. The optional dependency is
+        handled with the __SPGLIB__ flag from the symmetries module.
+        
+        The primitive cell search may change the orientation of the lattice vectors
+        to match spglib's standard conventions, unless no_idealize=True.
+        
+        The masses dictionary is copied from the original structure to the primitive
+        structure, preserving all atomic masses.
+        """
+        # Check if spglib is available
+        if not SYM.__SPGLIB__:
+            raise ImportError("Error, get_primitive_cell requires spglib to be installed.")
+        
+        # Check if structure has unit cell
+        if not self.has_unit_cell:
+            raise ValueError("Error, the structure must have a valid unit cell to find the primitive cell.")
+        
+        # Get the spglib cell representation
+        cell = self.get_spglib_cell()
+        
+        # Use spglib to find the primitive cell
+        # standardize_cell with to_primitive=True is the modern recommended approach
+        primitive_cell = SYM.spglib.standardize_cell(
+            cell, 
+            to_primitive=True, 
+            no_idealize=no_idealize,
+            symprec=symprec,
+            angle_tolerance=angle_tolerance
+        )
+        
+        if primitive_cell is None:
+            raise ValueError("Error, spglib failed to find the primitive cell. "
+                           "The structure may be too distorted or symprec too strict.")
+        
+        # Unpack the primitive cell data
+        primitive_lattice, primitive_positions, primitive_numbers = primitive_cell
+        
+        # Create a new Structure for the primitive cell
+        primitive_struct = Structure()
+        primitive_struct.has_unit_cell = True
+        primitive_struct.unit_cell = np.array(primitive_lattice, dtype=np.float64)
+        
+        # Convert fractional positions to Cartesian coordinates
+        # primitive_positions are in fractional coordinates of the primitive lattice
+        primitive_struct.coords = np.zeros((len(primitive_positions), 3), dtype=np.float64)
+        for i, pos in enumerate(primitive_positions):
+            # Convert fractional to Cartesian: r_cart = r_frac * lattice_vectors
+            primitive_struct.coords[i, :] = np.dot(pos, primitive_lattice)
+        
+        primitive_struct.N_atoms = len(primitive_numbers)
+        
+        # Map atomic numbers back to symbols
+        # We need to reverse the mapping from get_spglib_cell()
+        # Build the forward mapping first (same logic as get_spglib_cell)
+        forward_mapping = {}
+        for s in self.atoms:
+            forward_mapping.setdefault(s, len(forward_mapping) + 1)
+        
+        # Create reverse mapping: number -> symbol
+        reverse_mapping = {v: k for k, v in forward_mapping.items()}
+        
+        # Assign atomic symbols
+        primitive_struct.atoms = [reverse_mapping[num] for num in primitive_numbers]
+        
+        # Copy the masses dictionary from the original structure
+        primitive_struct.masses = self.masses.copy()
+        
+        # Handle return_itau
+        if return_itau:
+            # Get the symmetry dataset which contains the mapping information
+            dataset = SYM.spglib.get_symmetry_dataset(cell, symprec=symprec, angle_tolerance=angle_tolerance)
+            if dataset is None:
+                raise ValueError("Error, spglib failed to get symmetry dataset for itau mapping.")
+            
+            # mapping_to_primitive gives the index of the primitive atom for each input atom
+            # This is analogous to itau in generate_supercell
+            itau = np.array(dataset.mapping_to_primitive, dtype=np.intc)
+            return primitive_struct, itau
+        
+        return primitive_struct
+
     def get_phonopy_calculation(self, supercell = [1,1,1]):
         """
         Convert the CellConstructor structure to a phonopy object 

@@ -500,7 +500,80 @@ Vice-versa, you can generate an ASE Atoms structure using the function get_ase_a
    :members: get_ase_atoms
 
 
-	     
+Extract the primitive cell
+--------------------------
+
+When working with crystal structures, you often need to find the primitive cell from a conventional cell or supercell.
+CellConstructor provides the ``get_primitive_cell()`` method that uses spglib to identify the smallest repeating unit
+by exploiting the crystal symmetries.
+
+This is particularly useful when:
+
+- You have a conventional cell and want to reduce it to the primitive cell for computational efficiency
+- You need to identify the irreducible atoms in the unit cell
+- You want to standardize the cell representation
+
+Here is an example of how to extract the primitive cell from a conventional FCC cell:
+
+.. code:: python
+
+   import cellconstructor as CC
+   import cellconstructor.Structure
+   import numpy as np
+
+   # Create a conventional FCC cell (4 atoms)
+   fcc_conv = CC.Structure.Structure()
+   fcc_conv.unit_cell = np.array([[4, 0, 0], [0, 4, 0], [0, 0, 4]], dtype=np.float64)
+   fcc_conv.has_unit_cell = True
+   fcc_conv.atoms = ["Al", "Al", "Al", "Al"]
+   fcc_conv.N_atoms = 4
+   fcc_conv.coords = np.array([
+       [0, 0, 0],
+       [0, 2, 2],
+       [2, 0, 2],
+       [2, 2, 0]
+   ], dtype=np.float64)
+   fcc_conv.masses = {"Al": 26.98}
+
+   # Extract the primitive cell
+   fcc_prim = fcc_conv.get_primitive_cell()
+
+   print("Conventional cell atoms:", fcc_conv.N_atoms)
+   print("Primitive cell atoms:", fcc_prim.N_atoms)
+   print("Primitive cell lattice:")
+   print(fcc_prim.unit_cell)
+
+The method returns a new Structure object containing the primitive cell with:
+
+- Reduced number of atoms (1 atom for FCC primitive instead of 4 in conventional)
+- Primitive lattice vectors
+- Atomic positions in Cartesian coordinates
+- Preserved masses dictionary
+
+You can also obtain the mapping between the original atoms and the primitive atoms using the ``return_itau`` parameter:
+
+.. code:: python
+
+   # Get the primitive cell with the itau mapping
+   fcc_prim, itau = fcc_conv.get_primitive_cell(return_itau=True)
+
+   # itau[i] gives the index of the primitive atom that corresponds to original atom i
+   print("itau mapping:", itau)
+   # Output: [0 0 0 0] - all 4 atoms map to the single primitive atom
+
+Additional parameters allow fine control over the primitive cell search:
+
+- ``symprec``: Symmetry precision tolerance (default: 1e-5)
+- ``angle_tolerance``: Tolerance for angles between basis vectors in degrees (default: -1, disabled)
+- ``no_idealize``: If True, disable idealization of basis vectors (default: False)
+
+If the input structure is already a primitive cell, the method returns a copy of the structure.
+
+
+.. autoclass:: Structures.Structures
+   :members: get_primitive_cell
+
+
 Load and save the dynamical matrix
 ----------------------------------
 
