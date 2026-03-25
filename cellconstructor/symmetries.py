@@ -134,6 +134,32 @@ class QE_Symmetry:
         # After the translation, which vector is transformed in which one?
         # This info is stored here as ndarray( size = (N_atoms, N_trans), dtype = np.intc, order = "F")
         self.QE_translations_irt = [] 
+        
+        # Cached transformation matrices for cartesian/crystal conversion
+        self._comp_matrix = None
+        self._comp_matrix_inv = None
+    
+    def _ensure_transformation_matrices(self):
+        """
+        Compute and cache the transformation matrices between cartesian and crystal coordinates.
+        Follows the same logic as Methods.convert_matrix_cart_cryst.
+        """
+        if self._comp_matrix is not None:
+            return
+        
+        unit_cell = self.structure.unit_cell
+        # Compute metric tensor
+        metric_tensor = np.zeros((3,3))
+        for i in range(3):
+            for j in range(i, 3):
+                metric_tensor[i, j] = metric_tensor[j, i] = unit_cell[i, :].dot(unit_cell[j, :])
+        
+        # comp_matrix = inv(metric_tensor) @ unit_cell
+        comp_matrix = np.linalg.inv(metric_tensor).dot(unit_cell)
+        comp_matrix_inv = np.linalg.inv(comp_matrix)
+        
+        self._comp_matrix = comp_matrix
+        self._comp_matrix_inv = comp_matrix_inv
     
     def ForceSymmetry(self, structure):
         """ 
@@ -793,7 +819,7 @@ After loading the dynamical matrix (where dyn is the Phonon object)
         # Apply all the symmetries at gamma
         symph.sym_v4(v4, self.QE_at, self.QE_s, self.QE_irt, self.QE_nsymq)
 
-    def ApplyQStar(self, fcq, q_point_group):
+    def ApplyQStar(self, fcq, q_point_group, timer = None):
         """
         APPLY THE Q STAR SYMMETRY
         =========================
@@ -910,11 +936,18 @@ After loading the dynamical matrix (where dyn is the Phonon object)
             #print sorting_q
                     
                         
-            # Copy the matrix in the new one
-            for xq in range(nq):
-                for xat in range(self.QE_nat):
-                    for yat in range(self.QE_nat):
-                        final_fc[xq, 3*xat: 3*xat + 3, 3*yat : 3*yat + 3] += dyn_star[sorting_q[xq], :,:, xat, yat] 
+            # Copy the matrix in the new one - VECTORIZED VERSION
+            # dyn_star has shape (nq, 3, 3, nat, nat)
+            # Reorder according to sorting_q
+            dyn_star_reordered = dyn_star[sorting_q, :, :, :, :]  # shape (nq, 3, 3, nat, nat)
+            # Reshape to (nq, 3*nat, 3*nat)
+            # First transpose to (nq, nat, 3, nat, 3) to group xat with first 3, yat with second 3
+            # Original indices: 0=nq, 1=cart_row, 2=cart_col, 3=xat, 4=yat
+            # Target order: (nq, xat, cart_row, yat, cart_col) -> transpose(0,3,1,4,2)
+            dyn_star_reshaped = dyn_star_reordered.transpose(0, 3, 1, 4, 2)
+            # Now reshape to (nq, 3*nat, 3*nat)
+            dyn_star_reshaped = dyn_star_reshaped.reshape(nq, 3*self.QE_nat, 3*self.QE_nat)
+            final_fc += dyn_star_reshaped 
             
         
         # Now divide the matrix per the xq value
@@ -967,7 +1000,7 @@ After loading the dynamical matrix (where dyn is the Phonon object)
 
         
         
-    def SymmetrizeFCQ(self, fcq, q_stars, verbose = False, asr = "custom"):
+    def SymmetrizeFCQ(self, fcq, q_stars, verbose = False, asr = "custom", timer = None):
         """
         Use the current structure to impose symmetries on a complete dynamical matrix
         in q space. Also the simple sum rule at Gamma is imposed
@@ -980,6 +1013,7 @@ After loading the dynamical matrix (where dyn is the Phonon object)
                 The list of q points divided by stars, the fcq must follow the order
                 of the q points in the q_stars array
         """
+
         nqirr = len(q_stars)
         nq = np.sum([len(x) for x in q_stars])
         
@@ -999,11 +1033,10 @@ After loading the dynamical matrix (where dyn is the Phonon object)
             # Prepare the symmetrization
             if verbose:
                 print ("Symmetries in q = ", q_points[iq, :])
-            t1 = time.time()
-            self.SetupQPoint(q_points[iq,:], verbose)
-            t2 = time.time()
-            if verbose:
-                print (" [SYMMETRIZEFCQ] Time to setup the q point %d" % iq, t2-t1, "s")
+            if timer is not None:
+                timer.execute_timed_function(self.SetupQPoint, q_points[iq,:], verbose)
+            else:
+                self.SetupQPoint(q_points[iq,:], verbose)
             
             # Proceed with the sum rule if we are at Gamma
             
@@ -1012,27 +1045,30 @@ After loading the dynamical matrix (where dyn is the Phonon object)
                     if verbose:
                         print ("q_point:", q_points[iq,:])
                         print ("Applying sum rule")
-                    self.ImposeSumRule(fcq[iq,:,:], asr)
+                    if timer is not None:
+                        timer.execute_timed_function(self.ImposeSumRule, fcq[iq,:,:], asr)
+                    else:
+                        self.ImposeSumRule(fcq[iq,:,:], asr)
             elif asr == "crystal":
-                self.ImposeSumRule(fcq[iq, :,:], asr = asr)
+                if timer is not None:
+                    timer.execute_timed_function(self.ImposeSumRule, fcq[iq, :,:], asr = asr)
+                else:
+                    self.ImposeSumRule(fcq[iq, :,:], asr = asr)
             elif asr == "no":
                 pass
             else:
                 raise ValueError("Error, only 'simple', 'crystal', 'custom' or 'no' asr are supported, given %s" % asr)
-            
-            t1 = time.time()
-            if verbose:
-                print (" [SYMMETRIZEFCQ] Time to apply the sum rule:", t1-t2, "s")
             
             # # Symmetrize the matrix
             if verbose:
                 old_fcq = fcq[iq, :,:].copy()
                 w_old = np.linalg.eigvals(fcq[iq, :, :])
                 print ("FREQ BEFORE SYM:", w_old )
-            self.SymmetrizeDynQ(fcq[iq, :,:], q_points[iq,:])
-            t2 = time.time()
+            if timer is not None:
+                timer.execute_timed_function(self.SymmetrizeDynQ, fcq[iq, :,:], q_points[iq,:])
+            else:
+                self.SymmetrizeDynQ(fcq[iq, :,:], q_points[iq,:])
             if verbose:
-                print (" [SYMMETRIZEFCQ] Time to symmetrize the %d dynamical matrix:" % iq, t2 -t1, "s" )
                 print (" [SYMMETRIZEFCQ] Difference before the symmetrization:", np.sqrt(np.sum(np.abs(old_fcq - fcq[iq, :,:])**2)))
                 w_new = np.linalg.eigvals(fcq[iq, :, :])
                 print ("FREQ AFTER SYM:", w_new)
@@ -1041,14 +1077,13 @@ After loading the dynamical matrix (where dyn is the Phonon object)
         q0_index = 0
         for i in range(nqirr):
             q_len = len(q_stars[i])
-            t1 = time.time()
             if verbose:
                 print ("Applying the q star symmetrization on:")
                 print (np.array(q_stars[i]))
-            self.ApplyQStar(fcq[q0_index : q0_index + q_len, :,:], np.array(q_stars[i]))
-            t2 = time.time()
-            if verbose:
-                print (" [SYMMETRIZEFCQ] Time to apply the star q_irr = %d:" % i, t2 - t1, "s")
+            if timer is not None:
+                timer.execute_timed_function(self.ApplyQStar, fcq[q0_index : q0_index + q_len, :,:], np.array(q_stars[i]))
+            else:
+                self.ApplyQStar(fcq[q0_index : q0_index + q_len, :,:], np.array(q_stars[i]))
             q0_index += q_len
 
         
@@ -1060,7 +1095,7 @@ After loading the dynamical matrix (where dyn is the Phonon object)
         symph.symm_base.set_accep_threshold(self.threshold)
         
         
-    def ImposeSumRule(self, force_constant, asr = "custom", axis = 1, zeu = None):
+    def ImposeSumRule(self, force_constant, asr = "custom", axis = 1, zeu = None, timer = None):
         """
         QE SUM RULE
         ===========
@@ -1129,7 +1164,7 @@ After loading the dynamical matrix (where dyn is the Phonon object)
     
     
         
-    def SetupQPoint(self, q_point = np.zeros(3), verbose = False):
+    def SetupQPoint(self, q_point = np.zeros(3), verbose = False, timer = None):
         """
         Get symmetries of the small group of q
         
@@ -1505,7 +1540,7 @@ After loading the dynamical matrix (where dyn is the Phonon object)
             vector[i, :] = tmp_vector[:,i]
         
                 
-    def SymmetrizeDynQ(self, dyn_matrix, q_point):
+    def SymmetrizeDynQ(self, dyn_matrix, q_point, timer = None):
         """
         DYNAMICAL MATRIX SYMMETRIZATION
         ===============================
@@ -1531,10 +1566,10 @@ After loading the dynamical matrix (where dyn is the Phonon object)
         QE_dyn = np.zeros( (3, 3, self.QE_nat, self.QE_nat), dtype = np.complex128, order = "F")
         
         # Get the crystal coordinates for the matrix
-        for na in range(self.QE_nat):
-            for nb in range(self.QE_nat):
-                fc = dyn_matrix[3 * na : 3* na + 3, 3*nb: 3 * nb + 3]
-                QE_dyn[:, :, na, nb] = Methods.convert_matrix_cart_cryst(fc, self.structure.unit_cell, False)
+        if timer is not None:
+            timer.execute_timed_function(self._convert_cart_to_cryst, dyn_matrix, QE_dyn, override_name="ConvertCartToCryst")
+        else:
+            self._convert_cart_to_cryst(dyn_matrix, QE_dyn)
         
         # Prepare the xq variable
         #xq = np.ones(3, dtype = np.float64)
@@ -1561,17 +1596,57 @@ After loading the dynamical matrix (where dyn is the Phonon object)
         
         
         # USE THE QE library to perform the symmetrization
-        symph.symdynph_gq_new( xq, QE_dyn, self.QE_s, self.QE_invs, self.QE_rtau, 
-                              self.QE_irt, self.QE_irotmq, self.QE_minus_q, self.QE_nsymq, self.QE_nat)
+        if timer is not None:
+            t1 = time.time()
+            symph.symdynph_gq_new( xq, QE_dyn, self.QE_s, self.QE_invs, self.QE_rtau, 
+                                  self.QE_irt, self.QE_irotmq, self.QE_minus_q, self.QE_nsymq, self.QE_nat)
+            t2 = time.time()
+            timer.add_timer("FortranSymdynph", t2 - t1)
+        else:
+            symph.symdynph_gq_new( xq, QE_dyn, self.QE_s, self.QE_invs, self.QE_rtau, 
+                                  self.QE_irt, self.QE_irotmq, self.QE_minus_q, self.QE_nsymq, self.QE_nat)
 
         # TODO: Error while applying the symmetry
         
         # Return to cartesian coordinates
-        for na in range(self.QE_nat):
-            for nb in range(self.QE_nat):
-                fc = QE_dyn[:, :, na, nb] 
-                dyn_matrix[3 * na : 3* na + 3, 3*nb: 3 * nb + 3] = Methods.convert_matrix_cart_cryst(fc, self.structure.unit_cell, True)
+        if timer is not None:
+            timer.execute_timed_function(self._convert_cryst_to_cart, dyn_matrix, QE_dyn, override_name="ConvertCrystToCart")
+        else:
+            self._convert_cryst_to_cart(dyn_matrix, QE_dyn)
                 
+    def _convert_cart_to_cryst(self, dyn_matrix, QE_dyn):
+        """
+        Helper: convert dynamical matrix from cartesian to crystal coordinates.
+        Vectorized version using cached transformation matrices.
+        """
+        self._ensure_transformation_matrices()
+        nat = self.QE_nat
+        A = self._comp_matrix_inv  # transformation from cart to cryst
+        
+        # Reshape dyn_matrix (3*nat, 3*nat) -> (nat, 3, nat, 3)
+        dyn_blocks = dyn_matrix.reshape(nat, 3, nat, 3)
+        # Apply transformation: fc_cryst = A.T @ fc_cart @ A
+        tmp = np.einsum('ki,a i b j -> a k b j', A.T, dyn_blocks)
+        fc_cryst = np.einsum('a k b j, j l -> a k b l', tmp, A)
+        # Convert to QE_dyn shape (3,3,nat,nat): fc_cryst[na,k,nb,l] -> QE_dyn[k,l,na,nb]
+        QE_dyn[:,:,:,:] = fc_cryst.transpose(1,3,0,2)
+    
+    def _convert_cryst_to_cart(self, dyn_matrix, QE_dyn):
+        """
+        Helper: convert dynamical matrix from crystal to cartesian coordinates.
+        Vectorized version using cached transformation matrices.
+        """
+        self._ensure_transformation_matrices()
+        nat = self.QE_nat
+        B = self._comp_matrix  # transformation from cryst to cart
+        
+        # Convert QE_dyn (3,3,nat,nat) to (nat,3,nat,3): QE_dyn[k,l,na,nb] -> fc_cryst[na,k,nb,l]
+        fc_cryst = QE_dyn.transpose(2,0,3,1)
+        # Apply transformation: fc_cart = B.T @ fc_cryst @ B
+        tmp = np.einsum('ki,a i b j -> a k b j', B.T, fc_cryst)
+        fc_cart = np.einsum('a k b j, j l -> a k b l', tmp, B)
+        # Reshape to (3*nat, 3*nat) and assign to dyn_matrix
+        dyn_matrix[:,:] = fc_cart.transpose(0,1,2,3).reshape(3*nat, 3*nat)
     def GetQStar(self, q_vector):
         """
         GET THE Q STAR

@@ -4009,6 +4009,9 @@ WARNING: Effective charges are not accounted by this method
                 # The dynamical matrix must be real
                 re_part = np.real(self.dynmats[iq])
 
+                if np.max(np.abs(np.imag(self.dynmats[iq]))) > __EPSILON__:
+                    self.save_qe("error_dyn")
+
                 assert np.max(np.abs(np.imag(self.dynmats[iq]))) < __EPSILON__, "Error, at point {} (q = -q + G) the dynamical matrix is complex".format(iq)
 
                 # Enforce reality to avoid complex polarization vectors

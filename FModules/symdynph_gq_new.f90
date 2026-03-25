@@ -221,16 +221,62 @@ subroutine symdynph_gq_new (xq, phi, s, invs, rtau, irt, irotmq, minus_q, &
   enddo
   phi (:, :, :, :) = phi (:, :, :, :) / DBLE(nsymq)
 
-  
-  ! print *, "OUT PHI:"
-  ! do na = 1, nat
-  !    do nb = 1, nat
-  !       print *, na, nb
-  !       do jpol = 1, 3
-  !          print *, phi(:, jpol, na, nb)
-  !       end do
-  !    end do
-  ! end do
-  
+  !
+  !    Re-enforce symmetries after small-group symmetrization.
+  !    The symmetrization loop can degrade both hermiticity and
+  !    time-reversal symmetry due to floating-point round-off when
+  !    multiple symmetry operations map to the same atom pair
+  !    (duplicate orbits). This is negligible for small matrix
+  !    elements but becomes significant for large values
+  !    (e.g. SSCHA gradients ~1e11 vs dynamical matrices ~1).
+  !
+
+  !    Re-enforce time-reversal q -> -q+G if present
+  !
+  if (minus_q) then
+     do na = 1, nat
+        do nb = 1, nat
+           sna = irt (irotmq, na)
+           snb = irt (irotmq, nb)
+           arg = 0.d0
+           do kpol = 1, 3
+              arg = arg + (xq (kpol) * (rtau (kpol, irotmq, na) - &
+                                        rtau (kpol, irotmq, nb) ) )
+           enddo
+           arg = arg * tpi
+           fase = DCMPLX(cos (arg), sin (arg) )
+           do ipol = 1, 3
+              do jpol = 1, 3
+                 work (ipol, jpol) = (0.d0, 0.d0)
+                 do kpol = 1, 3
+                    do lpol = 1, 3
+                       work (ipol, jpol) = work (ipol, jpol) + &
+                            s (ipol, kpol, irotmq) * s (jpol, lpol, irotmq) &
+                            * phi (kpol, lpol, sna, snb) * fase
+                    enddo
+                 enddo
+                 phip (ipol, jpol, na, nb) = (phi (ipol, jpol, na, nb) + &
+                      CONJG( work (ipol, jpol) ) ) * 0.5d0
+              enddo
+           enddo
+        enddo
+     enddo
+     phi = phip
+  endif
+
+  !    Re-enforce hermiticity
+  !
+  do na = 1, nat
+     do nb = 1, nat
+        do ipol = 1, 3
+           do jpol = 1, 3
+              phi (ipol, jpol, na, nb) = 0.5d0 * (phi (ipol, jpol, na, nb) &
+                   + CONJG(phi (jpol, ipol, nb, na) ) )
+              phi (jpol, ipol, nb, na) = CONJG(phi (ipol, jpol, na, nb) )
+           enddo
+        enddo
+     enddo
+  enddo
+
   return
 end subroutine symdynph_gq_new
