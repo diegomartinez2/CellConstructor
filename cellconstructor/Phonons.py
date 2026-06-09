@@ -1367,208 +1367,65 @@ class Phonons:
         LOAD FROM PHONOPY FORCE CONSTANTS
         =================================
 
-        This subroutine load the dynamical matrix from the phonopy FORCE_CONSTANT file.
-        It needs two files: the file with the structure information,
-        and the file with the force constant matrix.
+        Load the dynamical matrix from phonopy output files.
+        It needs two files: the phonopy.yaml file with the structure
+        and the FORCE_CONSTANTS file with the real space force
+        constants (both the full and the compact format are supported).
 
-        TODO: Not working!!
+        Units are read from the physical_unit block of the yaml file
+        and converted to the internal conventions: Angstrom for the
+        positions and Ry/bohr^2 for the force constants. If the block
+        is missing, the phonopy defaults (Angstrom and eV/Angstrom^2)
+        are assumed.
 
         Parameters
         ----------
             yaml_filename : string
-                Path to the YAML file, this contains the info of the structure and the supercell.
+                Path to the phonopy.yaml file, contains the structure,
+                the supercell and the physical units.
             fc_filename: string
                 Path to the FORCE_CONSTANTS file. If None, a file called FORCE_CONSTANTS in the same directory
                 as phonopy.yaml will be looked for.
         """
-        raise NotImplementedError("Error, this subroutine contains bugs. Use CC.Methods.phonopy_fc2_to_tensor2 instead")
-        warnings.warn("This subroutine is not tested yet, use it with care.")
+        units, supercell_matrix, cells = _read_phonopy_yaml(yaml_filename)
 
-        unit_cell = np.zeros((3,3), dtype = np.double)
-        supercell = np.zeros(3, dtype = np.intc)
-        coords = []
-        atoms = []
-        masses = {}
+        for key in ("unit_cell", "supercell"):
+            if key not in cells:
+                raise IOError("Error, no %s block found in %s" % (key, yaml_filename))
 
-        superstruct = None
-        unit_cell_itau = []
+        supercell_matrix = np.array(supercell_matrix, dtype = np.intc)
+        if supercell_matrix.shape != (3, 3):
+            raise IOError("Error, no supercell_matrix found in %s" % yaml_filename)
+        if np.any(supercell_matrix != np.diag(np.diag(supercell_matrix))):
+            raise NotImplementedError("Error, only diagonal supercell matrices are supported.")
+        supercell = np.diag(supercell_matrix)
 
-        with open(yaml_filename, "r") as fp:
+        length_factor = _phonopy_length_to_angstrom(units.get("length"))
+        fc_factor = _phonopy_fc_to_ry_bohr2(units.get("force_constants"))
 
-            read_primitive_cell = False
-            read_coord = False
-            read_lattice = False
-            read_supercell = False
-            read_superstruct = False
-            counter = 0
-            for line in fp.readlines():
-
-                line = line.strip()
-                if not line:
-                    continue
-
-                data = line.replace(",","").split()
-
-                if line == "supercell_matrix:":
-                    read_supercell = True
-                    counter = 0
-                    continue
-
-                if read_supercell and len(data) == 6:
-                    supercell[counter] = int(data[2 + counter])
-                    counter += 1
-
-                    if counter == 3:
-                        counter = 0
-                        read_supercell = False
-
-                if line == "unit_cell:":
-                    read_primitive_cell = True
-                    continue
-
-                if line == "lattice:":
-                    read_lattice = True
-                    counter = 0
-                    continue
-
-                if read_lattice and len(data) == 8:
-                    unit_cell[counter, :] = [float(data[x]) for x in range(2, 5)]
-                    counter += 1
-                    if counter == 3:
-                        counter = 0
-                        read_lattice = False
-
-                if line == "points:":
-                    read_coord = True
-                    atoms = []
-                    coords = []
-                    continue
-
-                if read_coord:
-                    if "symbol" in line:
-                        atoms.append(data[2])
-                    if "coordinates" in line:
-                        vector = np.array([float(data[x]) for x in range(2, 5)])
-                        coords.append(Methods.cryst_to_cart(unit_cell, vector))
-                    if "mass" in line:
-                        if not atoms[-1] in masses:
-                            masses[atoms[-1]] = float(data[1]) / MASS_RY_TO_UMA
-                    if "reduced_to" in line:
-                        if read_primitive_cell:
-                            unit_cell_itau.append(int(data[1]) - 1)
-
-                if  "supercell" in line:
-                    if read_primitive_cell:
-                        self.structure = Structure.Structure(len(atoms))
-                        self.structure.atoms = atoms
-                        self.structure.coords[:,:] = np.array(coords) * BOHR_TO_ANGSTROM
-                        self.structure.masses = masses
-                        self.structure.has_unit_cell = True
-                        self.structure.unit_cell = unit_cell.copy() * BOHR_TO_ANGSTROM
-                    read_coord = False
-                    read_lattice = False
-                    read_primitive_cell = False
-                    read_superstruct = True
-                    continue
-
-        # Now create the superstructure
-        if read_superstruct:
-            superstruct = Structure.Structure(len(atoms))
-            superstruct.atoms = atoms
-            superstruct.coords[:,:] = np.array(coords) * BOHR_TO_ANGSTROM
-            superstruct.masses = masses
-            superstruct.unit_cell = unit_cell.copy() * BOHR_TO_ANGSTROM
-            superstruct.has_unit_cell = True
-
-        # Get the Equivalent atoms in the unit cell
+        self.structure = _structure_from_phonopy_cell(cells["unit_cell"], length_factor)
+        superstruct = _structure_from_phonopy_cell(cells["supercell"], length_factor)
         itau = superstruct.get_itau(self.structure) - 1
 
-        # Now load the Force constant matrix
+        # Load the force constant matrix and convert it to Ry/bohr^2
         if fc_filename is None:
             fc_filename = os.path.join(os.path.dirname(yaml_filename), "FORCE_CONSTANTS")
 
-        fc = np.zeros( (superstruct.N_atoms * 3, superstruct.N_atoms * 3), dtype = np.double)
-        FC_TMP = np.zeros((3,3), dtype = np.double)
+        n_rows, fc_blocks = _read_phonopy_force_constants(fc_filename)
+        s2p = [x - 1 for x in cells["supercell"]["reduced_to"]]
+        fc = _get_phonopy_fc_supercell(fc_blocks, n_rows, superstruct, s2p)
+        fc *= fc_factor
 
-        with open(fc_filename, "r") as fp:
-
-            x = 0
-            y = 0
-            counter = 0
-            FC = np.zeros((3,3), dtype = np.double)
-            for i, line in enumerate(fp.readlines()):
-                line = line.strip()
-                data = line.split()
-
-
-                if i == 0:
-                    nat_prim = int(data[0])
-                    nat_tot = int(data[1])
-                    continue
-
-                iteration = (i - 1) // 4
-                counter = (i-1) % 4
-                x = iteration // nat_tot
-                y = iteration % nat_tot
-
-                if counter > 0:
-                    for new_x in np.arange(superstruct.N_atoms)[itau == x]:
-                        fc[3 * new_x + counter -1, 3*y: 3*y + 3] = [float(fx) for fx in data]
-                        fc[3*y: 3*y + 3, 3 * new_x + counter -1] = [float(fx) for fx in data]
-                #     counter += 1
-
-                #     if counter == 3:
-                #         # Save the FC in the correct blocks
-                #         counter = 0
-                #         for ia, ib in blocks:
-                #             fc[3*ia : 3*ia + 3, 3*ib: 3*ib + 3] = FC_TMP
-                #             fc[3*ib : 3*ib + 3, 3*ia: 3*ia + 3] = FC_TMP
-
-
-                # if len(data) == 2:
-                #     #x = int(data[0]) - 1
-                #     #y = int(data[1]) - 1
-                #     #x = itau[x]
-                #     counter = 0
-
-                #     # Get the blocks
-                #     blocks = []
-                #     #print(x, y)
-                #     DR = self.structure.coords[x, :] - superstruct.coords[y,:]
-                #     for ia in range(superstruct.N_atoms):
-                #         if unit_cell_itau[itau[ia]] != x:
-                #             continue
-                #         for ib in range(superstruct.N_atoms):
-                #             if unit_cell_itau[itau[ib]] != unit_cell_itau[itau[y]]:
-                #                 continue
-
-                #             # Check if the two ia and ib are the correct block
-                #             delta_r = superstruct.coords[ia, :] - superstruct.coords[ib, :]
-                #             dist = Methods.get_closest_vector(superstruct.unit_cell, DR - delta_r)
-                #             if np.linalg.norm(dist) < __EPSILON__:
-                #                 blocks.append((ia,ib))
-
-                # elif len(data) == 3:
-                #     FC_TMP[counter, :] = [float(fx) for fx in data]
-                #     counter += 1
-
-                #     if counter == 3:
-                #         # Save the FC in the correct blocks
-                #         counter = 0
-                #         for ia, ib in blocks:
-                #             fc[3*ia : 3*ia + 3, 3*ib: 3*ib + 3] = FC_TMP
-                #             fc[3*ib : 3*ib + 3, 3*ia: 3*ia + 3] = FC_TMP
-
-
-        # Now transform back in real space
+        # Transform to the q space (with gamma as the first point)
         q_tot = symmetries.GetQGrid(self.structure.unit_cell, supercell)
+        gamma_index = np.argmin(np.sum(np.array(q_tot)**2, axis = 1))
+        q_tot[gamma_index] = q_tot[0].copy()
+        q_tot[0] = np.zeros(3, dtype = np.double)
+
         dynq = GetDynQFromFCSupercell(fc, np.array(q_tot), self.structure, superstruct, itau)
-        self.dynmats = [None] * len(q_tot)
+        self.dynmats = [dynq[iq, :, :] for iq in range(len(q_tot))]
         self.q_tot = q_tot
         self.q_stars = [q_tot]
-
-        for iq in range(len(q_tot)):
-            self.dynmats[iq] = dynq[iq, :, :]
 
         self.AdjustQStar()
 
@@ -5294,3 +5151,196 @@ def compute_phonons_finite_displacements_sym(structure, ase_calculator, epsilon=
         final_dyn = correct_dyn
 
     return final_dyn
+
+
+def _read_phonopy_yaml(filename):
+    """
+    Parse the subset of a phonopy.yaml file needed by load_phonopy.
+
+    Returns
+    -------
+        units : dict
+            The physical_unit block (e.g. "length", "force_constants").
+        supercell_matrix : list
+            The rows of the supercell matrix.
+        cells : dict
+            For each cell block ("primitive_cell", "unit_cell",
+            "supercell") a dict with "lattice", "symbols", "fracs",
+            "masses" and "reduced_to".
+    """
+    units = {}
+    supercell_matrix = []
+    cells = {}
+    section = None
+    subkey = None
+
+    with open(filename, "r") as fp:
+        for raw_line in fp:
+            line = raw_line.split("#")[0].rstrip()
+            stripped = line.strip()
+            if not stripped:
+                continue
+
+            data = stripped.replace(",", " ").replace("[", " ").replace("]", " ").split()
+            indented = line[0] in " \t"
+
+            if not indented:
+                if stripped.endswith(":"):
+                    section = stripped[:-1]
+                    subkey = None
+                    if section in ("primitive_cell", "unit_cell", "supercell"):
+                        cells[section] = {"lattice": [], "symbols": [], "fracs": [],
+                                          "masses": [], "reduced_to": []}
+                elif stripped.startswith("-") and section == "supercell_matrix":
+                    supercell_matrix.append([int(x) for x in data[1:4]])
+                continue
+
+            if section == "physical_unit":
+                key, _, value = stripped.partition(":")
+                units[key.strip()] = value.strip().strip('"')
+                continue
+
+            if section not in cells:
+                continue
+
+            cell = cells[section]
+            if stripped.endswith(":"):
+                subkey = stripped[:-1] if stripped[:-1] in ("lattice", "points") else None
+            elif subkey == "lattice" and stripped.startswith("-"):
+                cell["lattice"].append([float(x) for x in data[1:4]])
+            elif subkey == "points":
+                if stripped.startswith("- symbol:"):
+                    cell["symbols"].append(data[2])
+                elif stripped.startswith("coordinates:"):
+                    cell["fracs"].append([float(x) for x in data[1:4]])
+                elif stripped.startswith("mass:"):
+                    cell["masses"].append(float(data[1]))
+                elif stripped.startswith("reduced_to:"):
+                    cell["reduced_to"].append(int(data[1]))
+
+    return units, supercell_matrix, cells
+
+
+def _phonopy_length_to_angstrom(unit):
+    """
+    Conversion factor from a phonopy length unit to Angstrom.
+    The unit string comes from the physical_unit block of phonopy.yaml;
+    None falls back to the phonopy default (Angstrom).
+    """
+    factors = {"angstrom": 1.0, "au": BOHR_TO_ANGSTROM, "bohr": BOHR_TO_ANGSTROM}
+    if unit is None:
+        unit = "angstrom"
+    key = unit.strip().lower()
+    if key not in factors:
+        raise ValueError("Error, unknown phonopy length unit '%s'" % unit)
+    return factors[key]
+
+
+def _phonopy_fc_to_ry_bohr2(unit):
+    """
+    Conversion factor from a phonopy force constant unit to Ry/bohr^2.
+    The unit string comes from the physical_unit block of phonopy.yaml;
+    None falls back to the phonopy default (eV/Angstrom^2).
+    """
+    factors = {"ev/angstrom^2": BOHR_TO_ANGSTROM**2 / RY_TO_EV,
+               "ev/angstrom.au": BOHR_TO_ANGSTROM / RY_TO_EV,
+               "ev/au^2": 1.0 / RY_TO_EV,
+               "ry/au^2": 1.0,
+               "mry/au^2": 1e-3,
+               "hartree/au^2": 2.0}
+    if unit is None:
+        unit = "eV/angstrom^2"
+    key = unit.strip().lower()
+    if key not in factors:
+        raise ValueError("Error, unknown phonopy force constant unit '%s'" % unit)
+    return factors[key]
+
+
+def _structure_from_phonopy_cell(cell, length_factor):
+    """
+    Build a Structure (Angstrom) from a cell block parsed by _read_phonopy_yaml.
+    Masses are converted from AMU to Rydberg units.
+    """
+    nat = len(cell["symbols"])
+    if nat == 0 or len(cell["lattice"]) != 3:
+        raise IOError("Error, incomplete cell block in the phonopy yaml file.")
+
+    lattice = np.array(cell["lattice"], dtype = np.double) * length_factor
+    structure = Structure.Structure(nat)
+    structure.atoms = list(cell["symbols"])
+    structure.coords[:,:] = Methods.cryst_to_cart(lattice, np.array(cell["fracs"], dtype = np.double))
+    structure.masses = {atm: mass / MASS_RY_TO_UMA
+                        for atm, mass in zip(cell["symbols"], cell["masses"])}
+    structure.unit_cell = lattice
+    structure.has_unit_cell = True
+    return structure
+
+
+def _read_phonopy_force_constants(filename):
+    """
+    Read a phonopy FORCE_CONSTANTS file (full or compact format).
+
+    Returns
+    -------
+        n_rows : int
+            The number of row atoms (equal to the number of supercell
+            atoms for the full format, to the number of primitive
+            atoms for the compact one).
+        blocks : dict
+            Maps the 0-based (row_atom, column_atom) supercell indices
+            to the 3x3 force constant blocks, in the units of the file.
+    """
+    with open(filename, "r") as fp:
+        lines = [line.strip() for line in fp if line.strip()]
+
+    header = lines[0].split()
+    n_rows = int(header[0])
+    n_cols = int(header[-1])
+
+    blocks = {}
+    index = 1
+    for _ in range(n_rows * n_cols):
+        i, j = [int(x) - 1 for x in lines[index].split()]
+        blocks[(i, j)] = np.array([[float(x) for x in lines[index + k].split()]
+                                   for k in range(1, 4)], dtype = np.double)
+        index += 4
+    return n_rows, blocks
+
+
+def _get_phonopy_fc_supercell(blocks, n_rows, superstruct, s2p):
+    """
+    Expand phonopy force constant blocks to the full 3N x 3N supercell matrix.
+
+    In the compact format the rows only span the primitive atoms; the
+    missing rows are recovered through the lattice translation that
+    connects each supercell atom to its primitive representative
+    (the reduced_to field of phonopy.yaml):
+    Phi(p + T, j) = Phi(p, j - T).
+    """
+    nat_sc = superstruct.N_atoms
+    fc = np.zeros((3 * nat_sc, 3 * nat_sc), dtype = np.double)
+    fracs = Methods.covariant_coordinates(superstruct.unit_cell, superstruct.coords)
+    lookup = {_wrapped_frac_key(f): i for i, f in enumerate(fracs)}
+
+    if n_rows == nat_sc:
+        s2p = list(range(nat_sc))
+    elif len(s2p) != nat_sc:
+        raise IOError("Error, the compact FORCE_CONSTANTS format requires the reduced_to fields in phonopy.yaml.")
+
+    for i in range(nat_sc):
+        rep = s2p[i]
+        translation = fracs[i] - fracs[rep]
+        for j in range(nat_sc):
+            jp = lookup[_wrapped_frac_key(fracs[j] - translation)]
+            fc[3*i : 3*i + 3, 3*j : 3*j + 3] = blocks[(rep, jp)]
+    return fc
+
+
+def _wrapped_frac_key(frac_coords):
+    """
+    Round fractional coordinates wrapped into [0, 1) to a hashable key,
+    so translated atoms can be matched up to numerical noise.
+    """
+    wrapped = np.array(frac_coords, dtype = np.double) % 1.0
+    wrapped[wrapped > 1.0 - 1e-5] = 0.0
+    return tuple(np.round(wrapped, 4))

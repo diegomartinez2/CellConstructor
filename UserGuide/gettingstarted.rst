@@ -612,7 +612,7 @@ The two most common file formats are the Phonopy and the ASE calculation.
 
 For phonopy, we expect you generate a FORCE_CONSTANTS file and a phonopy.yaml file containing the information about the structure and the atoms in the supercell.
 
-NOTE: Up to version 1.0 the Phonopy importer assumes the FORCE_CONSTANTS and the structure are written in Rydberg atomic units. This will probably change in the near future.
+The importer reads the physical units from the physical_unit block of the phonopy.yaml file and converts them to the internal conventions. Without that block the phonopy defaults (Angstrom and eV/Angstrom^2) are assumed.
 
 .. code::
 
