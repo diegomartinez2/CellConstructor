@@ -1982,12 +1982,14 @@ class Phonons:
 
 
     def ExtractRandomStructures(self, size=1, T=0, isolate_atoms = [], project_on_vectors = None,
-                    lock_low_w = False, remove_non_isolated_atoms = False, sobol = False, sobol_scramble = False, sobol_scatter = 0.0):
+                    lock_low_w = False, remove_non_isolated_atoms = False, sobol = False, sobol_scramble = False, sobol_scatter = 0.0, timer=None):
         """
-        EXTRACT RANDOM STRUCTURES
-        =========================
+        EXTRACT RANDOM STRUCTURES (OPTIMIZED)
+        =====================================
 
-        This method is used to extract a pool of random structures according to the current dinamical matrix.
+        This method is used to extract a pool of random structures according
+        to the current dynamical matrix.  This is the optimized version using
+        BLAS matrix multiplication instead of einsum.
 
         Parameters
         ----------
@@ -2012,22 +2014,18 @@ class Phonons:
             sobol_scatter : real (0.0 to 1) (Deafault = 0.0)
                 Set the scatter parameter to displace the Sobol positions randommly.
 
-        Returns
+        Results
         -------
             list
                 A list of Structure.Structure()
         """
         K_to_Ry=6.336857346553283e-06
 
-        def sobol_norm_rand(size,n_modes,scramble=False,sobol_salt=0.0):  # **** Diegom_test **** adding random 'salt'
+        def sobol_norm_rand(size,n_modes,scramble=False,sobol_salt=0.0):
             Sobol = Moro()
-            #data = Sobol.sobol_modes(size,n_modes,scramble=scramble)
-# If n_modes is bigger than 21201 comment upper line and uncomment lower line. This will be a strange ocurrence due to the fact that 21201 vibrational eigenmodes implies a dinamical matrix with more than 449482401 elements.
             data = Sobol.sobol_big(size,n_modes,scramble=scramble)
             if (sobol_salt!=0.0):
-                for i in range(size):
-                     for j in range(n_modes):
-                         data[i][j]=data[i][j]+(np.random.rand()-0.5)*sobol_salt
+                data += (np.random.rand(size, n_modes) - 0.5) * sobol_salt
             return data
 
         # Check if isolate atoms is good
@@ -2036,7 +2034,7 @@ class Phonons:
                 raise ValueError("Error, index in isolate_atoms out of boundary")
 
         # Now extract the values
-        ws, pol_vects = self.DiagonalizeSupercell()
+        ws, pol_vects = self.DiagonalizeSupercell(timer=timer)
         super_structure, itau = self.structure.generate_supercell(self.GetSupercell(), get_itau= True)
 
         # get the new isolated_atoms in the supercell
@@ -2046,10 +2044,8 @@ class Phonons:
                 if it in isolate_atoms:
                     new_isolate_atoms.append(i)
 
-
         # Remove translations
         trans_mask = super_structure.get_asr_modes(pol_vects)
-        # trans_mask = Methods.get_translations(pol_vects, super_structure.get_masses_array())
 
         # Exclude also other w = 0 modes
         if lock_low_w:
@@ -2085,20 +2081,32 @@ class Phonons:
 
         # Prepare the random numbers
         size = int(size)
+        t_start = time.time()
         if (not sobol):
             rand = np.random.normal(size = (size, n_modes))
         elif (sobol):
-            rand = sobol_norm_rand(size, n_modes, scramble = sobol_scramble, sobol_salt = sobol_scatter) # ***** Diegom_test ******
+            rand = sobol_norm_rand(size, n_modes, scramble = sobol_scramble, sobol_salt = sobol_scatter)
         else:
             raise ValueError('sobol is not True or False') # This should never raise
+        t_end = time.time()
+        if timer is not None:
+            timer.add_timer("Generate random numbers", t_end - t_start)
 
         # Get the masses for the final multiplication
         mass1 = np.tile(super_structure.get_masses_array(), (3, 1)).T.ravel()
+        inv_sqrt_mass = 1.0 / np.sqrt(mass1)
 
-        # TODO: I believe this is the heavy part of the extraction
-        total_coords = np.einsum("ij, i, j, kj->ik", pol_vects, 1/np.sqrt(mass1), a_mu, rand)
+        # Pre-scale polarization vectors by frequency amplitudes
+        # and ensure C-contiguous layout for BLAS matrix multiplication.
+        t_start = time.time()
+        pol_scaled = np.ascontiguousarray(pol_vects * a_mu[np.newaxis, :])
+        rand_contig = np.ascontiguousarray(rand)
 
-
+        total_coords = (pol_scaled @ rand_contig.T)
+        total_coords *= inv_sqrt_mass[:, np.newaxis]
+        t_end = time.time()
+        if timer is not None:
+            timer.add_timer("Matrix multiply (BLAS)", t_end - t_start)
 
         # Project the displacements along the selected modes
         if not project_on_vectors is None:
@@ -2115,29 +2123,184 @@ class Phonons:
                 total_coords[:, confid] = new_coords
 
         # Prepare the structures
+        t_start = time.time()
         final_structures = []
         for i in range(size):
             tmp_str = super_structure.copy()
-            # Prepare the new atomic positions
-
-
-            # TODO: THis is the heavy part, probably we can replace this for loop
             tmp_str.coords[:,:] += total_coords[:,i].reshape((tmp_str.N_atoms, 3))
-            #for k in range(tmp_str.N_atoms):
-            #    tmp_str.coords[k,:] += total_coords[3*k : 3*(k+1), i]
 
-            # Check if you must to pop some atoms:
             if len (isolate_atoms):
-
                 if remove_non_isolated_atoms:
-                    tmp_str = tmp_str.isolate_atoms(new_isolate_atoms) # Use the list in the supercell
+                    tmp_str = tmp_str.isolate_atoms(new_isolate_atoms)
                 else:
                     tmp_str.N_atoms = len(isolate_atoms) * np.prod(self.GetSupercell())
                     new_coords = tmp_str.coords.copy()
                     for j, x in enumerate(isolate_atoms):
                         tmp_str.coords[j,:] = new_coords[x,:]
             final_structures.append(tmp_str)
+        t_end = time.time()
+        if timer is not None:
+            timer.add_timer("Build output structures", t_end - t_start)
 
+        return final_structures
+
+    def ExtractRandomStructures_slow(self, size=1, T=0, isolate_atoms = [], project_on_vectors = None,
+                    lock_low_w = False, remove_non_isolated_atoms = False, sobol = False, sobol_scramble = False, sobol_scatter = 0.0, timer=None):
+        """
+        EXTRACT RANDOM STRUCTURES (SLOW - EINSUM)
+        =========================================
+
+        This is the original (non-optimized) version that uses numpy.einsum
+        for the matrix-multiplication step.  Kept for backward compatibility
+        and benchmarking.
+
+        This method is used to extract a pool of random structures according to the current dinamical matrix.
+
+        Parameters
+        ----------
+            size : int
+                The number of structures to be generated
+            T : float
+                The temperature for the generation of the ensemble
+            isolate_atoms : list, optional
+                A list of the atom index. Only the atoms present in this list will be randomize.
+                If remove_non_isolated_atoms is True, then the output structures contain only non isolated atoms.
+            project_on_vectors : ndarray
+                Vectors in Cartesian Space on which the random displacements are projected. Usefull if you want to remove some
+                mode or atomic motion.
+            lock_low_w : bool
+                If True, frequencies below __EPSILON_W__ are fixed.
+            remove_non_isolated_atoms : bool
+                If true it removes atoms non included in the isolate_atoms list (if not empty)
+            sobol : bool, optional (Default = False)
+                 Defines if the calculation uses random Gaussian generator or Sobol Gaussian generator.
+            sobol_scramble : bool, optional (Default = False)
+                Set the optional scrambling of the generated numbers taken from the Sobol sequence.
+            sobol_scatter : real (0.0 to 1) (Deafault = 0.0)
+                Set the scatter parameter to displace the Sobol positions randommly.
+
+        Returns
+        -------
+            list
+                A list of Structure.Structure()
+        """
+        K_to_Ry=6.336857346553283e-06
+
+        def sobol_norm_rand(size,n_modes,scramble=False,sobol_salt=0.0):
+            Sobol = Moro()
+            data = Sobol.sobol_big(size,n_modes,scramble=scramble)
+            if (sobol_salt!=0.0):
+                for i in range(size):
+                     for j in range(n_modes):
+                         data[i][j]=data[i][j]+(np.random.rand()-0.5)*sobol_salt
+            return data
+
+        # Check if isolate atoms is good
+        if len(isolate_atoms):
+            if np.max(isolate_atoms) >= self.structure.N_atoms:
+                raise ValueError("Error, index in isolate_atoms out of boundary")
+
+        # Now extract the values
+        ws, pol_vects = self.DiagonalizeSupercell(timer=timer)
+        super_structure, itau = self.structure.generate_supercell(self.GetSupercell(), get_itau= True)
+
+        # get the new isolated_atoms in the supercell
+        if len(isolate_atoms):
+            new_isolate_atoms = []
+            for i, it in enumerate(itau):
+                if it in isolate_atoms:
+                    new_isolate_atoms.append(i)
+
+        # Remove translations
+        trans_mask = super_structure.get_asr_modes(pol_vects)
+
+        # Exclude also other w = 0 modes
+        if lock_low_w:
+            locked_original = np.abs(ws) < __EPSILON_W__
+            if np.sum(locked_original.astype(int)) > np.sum(trans_mask.astype(int)):
+                trans_mask = locked_original
+
+        ws = ws[~trans_mask]
+        pol_vects = pol_vects[:, ~trans_mask]
+
+        nat = self.structure.N_atoms * np.prod(self.GetSupercell())
+
+        # Check that the matrix is positive definite
+        if any([w < 0 for w in ws]):
+            ERR_MSG = """
+    Error, the current matrix is not positive definite.
+           I cannot extract a random ensamble.
+           If you want to skip this error,
+           consider calling the method ForcePositiveDefinite() before extracting the ensemble.
+
+        It could also be a consequence of a sum rule not well imposed.
+        Try to run Symmetrize() to force the sum rule.
+    """
+
+            raise ValueError(ERR_MSG)
+
+        n_modes = len(ws)
+        if T == 0:
+            a_mu = 1 / np.sqrt(2* ws) * BOHR_TO_ANGSTROM
+        else:
+            beta = 1 / (K_to_Ry*T)
+            a_mu = 1 / np.sqrt( np.tanh(beta*ws / 2) *2* ws) * BOHR_TO_ANGSTROM
+
+        # Prepare the random numbers
+        size = int(size)
+        t_start = time.time()
+        if (not sobol):
+            rand = np.random.normal(size = (size, n_modes))
+        elif (sobol):
+            rand = sobol_norm_rand(size, n_modes, scramble = sobol_scramble, sobol_salt = sobol_scatter)
+        else:
+            raise ValueError('sobol is not True or False') # This should never raise
+        t_end = time.time()
+        if timer is not None:
+            timer.add_timer("Generate random numbers", t_end - t_start)
+
+        # Get the masses for the final multiplication
+        mass1 = np.tile(super_structure.get_masses_array(), (3, 1)).T.ravel()
+
+        t_start = time.time()
+        total_coords = np.einsum("ij, i, j, kj->ik", pol_vects, 1/np.sqrt(mass1), a_mu, rand)
+        t_end = time.time()
+        if timer is not None:
+            timer.add_timer("Matrix multiply (einsum)", t_end - t_start)
+
+        # Project the displacements along the selected modes
+        if not project_on_vectors is None:
+            check, N_proj = np.shape(project_on_vectors)
+            if check != 3*nat:
+                print("Expected nat: " + str(nat) + " project_on_modes nat: " + str(check/3))
+                raise ValueError("Error, the input project_on_modes has a wrong shape")
+
+            for confid in range(size):
+                new_coords = np.zeros( nat*3, dtype = np.float64)
+                for i in range(N_proj):
+                    new_coords += project_on_vectors[:, i].dot(total_coords[:, confid]) * project_on_vectors[:, i]
+
+                total_coords[:, confid] = new_coords
+
+        # Prepare the structures
+        t_start = time.time()
+        final_structures = []
+        for i in range(size):
+            tmp_str = super_structure.copy()
+            tmp_str.coords[:,:] += total_coords[:,i].reshape((tmp_str.N_atoms, 3))
+
+            if len (isolate_atoms):
+                if remove_non_isolated_atoms:
+                    tmp_str = tmp_str.isolate_atoms(new_isolate_atoms)
+                else:
+                    tmp_str.N_atoms = len(isolate_atoms) * np.prod(self.GetSupercell())
+                    new_coords = tmp_str.coords.copy()
+                    for j, x in enumerate(isolate_atoms):
+                        tmp_str.coords[j,:] = new_coords[x,:]
+            final_structures.append(tmp_str)
+        t_end = time.time()
+        if timer is not None:
+            timer.add_timer("Build output structures", t_end - t_start)
 
         return final_structures
 
@@ -4805,7 +4968,7 @@ def get_dyn_from_ase_phonons(ase_ph, adjust_qstar = True):
 
     FC = ase_ph.get_force_constant()
 
-    supercell_size = ase_ph.N_c
+    supercell_size = ase_ph.supercell
 
     # Get the structure
     structure = Structure.Structure()
@@ -4829,7 +4992,7 @@ def get_dyn_from_ase_phonons(ase_ph, adjust_qstar = True):
     itau = supercell_structure.get_itau(structure) - 1 # Fort -> Py (indexing)
 
     # Get the lattice vectors
-    R_cN = ase_ph.lattice_vectors()
+    R_cN = ase_ph.compute_lattice_vectors()
     R_cN = np.array(R_cN).T
 
     # Get the lattice in cartesian units
