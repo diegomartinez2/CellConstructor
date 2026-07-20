@@ -64,40 +64,83 @@ def get_rank():
     else:
         raise NotImplementedError("Error, I do not know what is the rank with the {} parallelization".format(__PARALLEL_TYPE__))
         
-def broadcast(list_of_values, enforce_double = False, other_type = None):
+def broadcast(list_of_values, enforce_double=False, other_type=None):
     """
-    Broadcast the list to all the processors from the master.
-    It returns a list equal for all the processors from the master.
+    Broadcast the data to all the processors from the master.
+    It returns an equal copy for all the processors from the master.
 
-    If you are broadcasting a numpy array, use enforce_double. If the array is not a C double
-    type, specify the other_type (must be an MPI type).
+    For numpy arrays, chunked raw MPI Bcast is used to avoid the 2 GB
+    message-size limit of pickle-based broadcast.  Non-array types
+    (ints, lists, etc.) use the pickle-based ``comm.bcast`` path.
 
-    NOTE: Now enforce_double is just a dumb variable, as it is always overridded.
-          It seems that Bcast does not work as expected
+    Parameters
+    ----------
+        list_of_values : any
+            The value to broadcast.  Numpy arrays are detected
+            automatically and broadcast via raw Bcast in chunks.
+        enforce_double : bool
+            Ignored for numpy arrays (type is inferred automatically).
+            For non-array types the pickle path is always used.
+        other_type : MPI type
+            Ignored (kept for backward compatibility).
     """
-
-    # STRONG OVERRIDE OVER ENFORCE DOUBLE THAT IS NOT WORKING
-    enforce_double = False 
 
     if __PARALLEL_TYPE__ == "mpi4py":
         comm = mpi4py.MPI.COMM_WORLD
         if comm.Get_size() == 1:
             return list_of_values
 
-        if not enforce_double:
-            return comm.bcast(list_of_values, root = 0)
-        else:
-            total_shape = list_of_values.shape
-            mpitype =  mpi4py.MPI.DOUBLE
-            if other_type is not None:
-                mpitype = other_type
-            new_data = list_of_values.ravel()
-            comm.Bcast([new_data, np.prod(total_shape), mpitype], root = 0)
-            return new_data.reshape(total_shape)
+        if isinstance(list_of_values, np.ndarray):
+            return _broadcast_ndarray(comm, list_of_values)
+
+        return comm.bcast(list_of_values, root=0)
+
     elif __PARALLEL_TYPE__ == "serial":
         return list_of_values
     else:
-        raise NotImplementedError("broadcast not implemented for {} parallelization.".format(__PARALLEL_TYPE__))
+        raise NotImplementedError(
+            "broadcast not implemented for {} parallelization.".format(
+                __PARALLEL_TYPE__))
+
+
+def _broadcast_ndarray(comm, array):
+    """
+    Broadcast a numpy array using chunked raw MPI Bcast.
+
+    The array metadata (shape and dtype) is first synchronized via
+    pickle, then the raw data is sent in fixed-size chunks to stay
+    well within MPI's 2 GB single-message limit.
+    """
+    if am_i_the_master():
+        meta = (array.shape, str(array.dtype))
+    else:
+        meta = None
+    meta = comm.bcast(meta, root=0)
+    shape, dtype_str = meta
+    dtype = np.dtype(dtype_str)
+
+    if not am_i_the_master():
+        array = np.empty(shape, dtype=dtype)
+
+    flat = array.ravel()
+    total = flat.size
+
+    if total == 0:
+        return array
+
+    CHUNK = 2 * 1024 * 1024
+
+    for start in range(0, total, CHUNK):
+        end = min(start + CHUNK, total)
+        n = end - start
+        if am_i_the_master():
+            chunk = flat[start:end].copy()
+        else:
+            chunk = np.empty(n, dtype=dtype)
+        comm.Bcast(chunk, root=0)
+        flat[start:end] = chunk
+
+    return array
 
 
 def barrier():
