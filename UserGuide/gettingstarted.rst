@@ -601,40 +601,11 @@ We can read a quantum espresso dynamical matrix easily.
 
 When loading from quantum espresso, CellConstructor will also import raman_tensor, dielectric tensor and effective charges.
 The structure is read from the first dynamical matrix (usually the gamma point).
-An experimental interface to phonopy is under developement.
+The full phonopy integration is described on the :doc:`phonopy_integration` page.
 
 
-Load phonons from Phonopy and ASE
----------------------------------
-
-Often, you may have to load a dynamical matrix from other sources than quantum-espresso.
-The two most common file formats are the Phonopy and the ASE calculation.
-
-For phonopy, we expect you generate a FORCE_CONSTANTS file and a phonopy.yaml file containing the information about the structure and the atoms in the supercell.
-
-The importer reads the physical units from the physical_unit block of the phonopy.yaml file and converts them to the internal conventions. Without that block the phonopy defaults (Angstrom and eV/Angstrom^2) are assumed.
-
-.. code::
-
-   import cellconstructor as CC
-   import cellconstructor.Phonons
-
-   # Load the dynamical matrix in phonopy format
-   dyn = CC.Phonons.Phonons()
-   dyn.load_phonopy("path/to/phonopy.yaml")
-
-   # Save as new_dyn in quantum espresso format
-   dyn.save_qe("new_dyn")
-
-   # Save in the phonopy format
-   dyn.save_phonopy("path/to/directory")
-
-Optionally, it is possible to provide also the path to the FORCE_CONSTANTS file, which by default is assumed to be in the same directory as the phonopy.yaml.
-This script can be employed to convert from Phonopy to quantum espresso file format.
-
-In the same way, it is possible to generate the FORCE_CONSTANTS file with the method save_phonopy. Here, you just need to specify the directory.
-Instead of the phonopy.yaml, the unitcell.in in quantum espresso format is generated. Phonopy is able to read this file.
-
+Load phonons from ASE
+---------------------
 
 The ASE calculator can be used to directly compute the dynamical matrix from finite displacements.
 Once you have your ase.phonons.Phonons object, you can convert it into a CellConstructor Phonons object using the method get_dyn_from_ase_phonons.

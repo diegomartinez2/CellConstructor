@@ -13,6 +13,7 @@ Welcome to CellConstructor's documentation!
 
    intro
    gettingstarted
+   phonopy_integration
    developerguide
    apireference
 
