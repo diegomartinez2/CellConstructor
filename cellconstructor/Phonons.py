@@ -4968,7 +4968,7 @@ def get_dyn_from_ase_phonons(ase_ph, adjust_qstar = True):
 
     FC = ase_ph.get_force_constant()
 
-    supercell_size = ase_ph.N_c
+    supercell_size = ase_ph.supercell
 
     # Get the structure
     structure = Structure.Structure()
@@ -4992,7 +4992,7 @@ def get_dyn_from_ase_phonons(ase_ph, adjust_qstar = True):
     itau = supercell_structure.get_itau(structure) - 1 # Fort -> Py (indexing)
 
     # Get the lattice vectors
-    R_cN = ase_ph.lattice_vectors()
+    R_cN = ase_ph.compute_lattice_vectors()
     R_cN = np.array(R_cN).T
 
     # Get the lattice in cartesian units
