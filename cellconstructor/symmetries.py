@@ -86,6 +86,8 @@ class QE_Symmetry:
         # Define the quantum espresso symmetry variables in optimized way to work with Fortran90
         self.QE_nat = np.intc( nat )
         self.QE_s = np.zeros( (3, 3, 48) , dtype = np.intc, order = "F")
+        self.QE_s_cart = np.zeros( (3, 3, 48) , dtype = np.float64, order = "F")
+        self.QE_s_inv_cart = np.zeros( (3, 3, 48) , dtype = np.float64, order = "F")
         self.QE_irt = np.zeros( (48, nat), dtype = np.intc, order = "F")
         self.QE_invs = np.zeros( (48), dtype = np.intc, order = "F")
         self.QE_rtau = np.zeros( (3, 48, nat), dtype = np.float64, order = "F")
@@ -1317,14 +1319,15 @@ After loading the dynamical matrix (where dyn is the Phonon object)
 
         trans_irt = 0
         self.QE_s[:,:,:] = 0
-
+        self.QE_s_cart[:,:,:] = 0
+        self.QE_s_inv_cart[:,:,:] = 0
 
         # Check how many point group symmetries do we have
         n_syms = 0
         for i, sym in enumerate(symmetries):
             # Extract the rotation and the fractional translation
             rot = sym[:,:3]
-
+            rot_cart = Methods.convert_matrix_cart_cryst2(rot, self.structure.unit_cell, cryst_to_cart = True)
             # Check if the rotation is equal to the first one
             if np.sum( (rot - symmetries[0][:,:3])**2 ) < 0.1 and n_syms == 0 and i > 0:
                 # We got all the rotations
@@ -1334,7 +1337,8 @@ After loading the dynamical matrix (where dyn is the Phonon object)
             # Extract the point group
             if n_syms == 0:
                 self.QE_s[:,:, i] = rot.T
-
+                self.QE_s_cart[:,:, i] = rot_cart
+                self.QE_s_inv_cart[:,:, i] = rot_cart.T
                 # Get the IRT (Atoms mapping using symmetries)
                 irt = GetIRT(self.structure, sym)
                 self.QE_irt[i, :] = irt + 1 #Py to Fort
